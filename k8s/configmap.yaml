@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: compint-config
+  namespace: default
+data:
+  PORT: "8000"
+  LOG_LEVEL: "info"
+  LOOKBACK_DAYS: "30"
+  SYNTHESIS_MODEL: "claude-sonnet-4-20250514"

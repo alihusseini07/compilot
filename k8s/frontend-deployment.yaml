@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: compint-frontend
+  namespace: default
+  labels:
+    app: compint-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: compint-frontend
+  template:
+    metadata:
+      labels:
+        app: compint-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: your-registry/compint-frontend:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: compint-frontend
+  namespace: default
+spec:
+  selector:
+    app: compint-frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer

@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: synthesis-agent
+  namespace: default
+spec:
+  # Run nightly at midnight UTC
+  schedule: "0 0 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: synthesis
+              image: your-registry/compint-backend:latest
+              # Run synthesis for all tracked companies. Extend this list as needed.
+              command:
+                - python
+                - -c
+                - |
+                  import asyncio, os
+                  from agents.synthesis_agent import SynthesisAgent
+                  companies = os.environ.get("TRACKED_COMPANIES", "linear").split(",")
+                  async def main():
+                      agent = SynthesisAgent()
+                      for c in companies:
+                          await agent.run(c.strip())
+                  asyncio.run(main())
+              env:
+                - name: ANTHROPIC_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: compint-secrets
+                      key: ANTHROPIC_API_KEY
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: compint-secrets
+                      key: DATABASE_URL
+                - name: REDIS_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: compint-secrets
+                      key: REDIS_URL
+                - name: TRACKED_COMPANIES
+                  value: "linear,notion,figma"
+              resources:
+                # Sized for vc2-2c-4gb Vultr node (2 vCPU, 4 GB RAM)
+                requests:
+                  cpu: "500m"
+                  memory: "512Mi"
+                limits:
+                  cpu: "1000m"
+                  memory: "1Gi"
