@@ -1,9 +1,10 @@
 """
-SynthesisAgent — reasons across all signals for a company using Claude.
+SynthesisAgent — reasons across all signals for a company using Gemma 4 26B MoE.
 
-This is the ONLY file that calls the Claude API. All LLM calls go through
-backend/llm.py. Never add anthropic SDK calls elsewhere.
+This is the ONLY file that calls the LLM. All inference calls go through
+backend/llm.py. Never add openai SDK calls elsewhere.
 
+Model is served via Vultr Serverless Inference (primary) or Ollama on a Vultr VM (fallback).
 Output: rows in the `inferences` table with confidence scores and supporting signal IDs.
 """
 
@@ -14,12 +15,12 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from db.models import Inference, Signal, async_session
-from llm import call_claude
+from llm import call_llm
 
 logger = logging.getLogger(__name__)
 
 LOOKBACK_DAYS = 30
-MODEL = "claude-sonnet-4-20250514"
+MODEL = "gemma-4-26b-it"
 
 SYSTEM_PROMPT = """You are a competitive intelligence analyst with deep expertise in reading weak signals \
 from public data sources to infer a company's strategic direction before it is announced.
@@ -67,7 +68,7 @@ class SynthesisAgent:
             return []
 
         logger.info(f"[synthesis] Running synthesis for '{company}' with {len(signals)} signals.")
-        inferences_data = await self._call_claude(company, signals)
+        inferences_data = await self._call_llm(company, signals)
         written = await self._write_inferences(company, inferences_data)
         logger.info(f"[synthesis] Wrote {len(written)} inferences for '{company}'.")
         return written
@@ -85,11 +86,11 @@ class SynthesisAgent:
             rows = result.scalars().all()
         return [r.to_dict() for r in rows]
 
-    async def _call_claude(self, company: str, signals: list[dict]) -> list[dict]:
+    async def _call_llm(self, company: str, signals: list[dict]) -> list[dict]:
         end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         start_date = (datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")
 
-        # Include only fields Claude needs — reduces token cost
+        # Include only fields the model needs — reduces token cost
         slim_signals = [
             {"id": s["id"], "source_type": s["source_type"], "content": s["content"], "scraped_at": s["scraped_at"]}
             for s in signals
@@ -103,7 +104,7 @@ class SynthesisAgent:
             signals_json=json.dumps(slim_signals, indent=2),
         )
 
-        raw = await call_claude(
+        raw = await call_llm(
             system=SYSTEM_PROMPT,
             user=user_prompt,
             model=MODEL,
@@ -116,7 +117,7 @@ class SynthesisAgent:
                 raise ValueError("Expected JSON array")
             return parsed
         except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"[synthesis] Claude returned invalid JSON: {e}\nRaw: {raw[:500]}")
+            logger.error(f"[synthesis] Model returned invalid JSON: {e}\nRaw: {raw[:500]}")
             return []
 
     async def _write_inferences(self, company: str, inferences_data: list[dict]) -> list[dict]:

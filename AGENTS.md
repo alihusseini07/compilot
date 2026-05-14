@@ -159,8 +159,8 @@ Claude Code rule: **never skip the base class**. If you add a new scraper, exten
 ## Synthesis Agent (`synthesis_agent.py`)
 
 **Schedule:** Nightly at midnight UTC (`0 0 * * *`)  
-**Claude model:** `claude-sonnet-4-20250514`  
-**All Claude API calls go through `backend/llm.py` — never call `anthropic` SDK directly here.**
+**Model:** Gemma 4 26B MoE (`gemma-4-26b-it`) — served via Vultr Serverless Inference (primary) or Ollama on a Vultr VM (fallback). Both endpoints speak the OpenAI Chat Completions API.  
+**All LLM calls go through `backend/llm.py` — never call `openai.AsyncOpenAI()` directly here.**
 
 ### Prompt Structure
 
@@ -210,7 +210,7 @@ Claude is instructed to assign confidence based on signal corroboration:
 ## Claude Code Working Rules for Agents
 
 1. **Maintain BaseAgent interface.** Every scraper must implement `async def run(company: str) -> list[dict]` and call `await self._write_signals(signals)`.
-2. **Never call the Claude API outside `synthesis_agent.py`.** All LLM calls route through `backend/llm.py`.
+2. **Never call the LLM outside `synthesis_agent.py`.** All inference calls route through `backend/llm.py`. Never instantiate `openai.AsyncOpenAI()` elsewhere.
 3. **Scrapers must be idempotent.** Every signal must have a stable `source_id`. Use `INSERT ... ON CONFLICT (source_id) DO NOTHING`.
 4. **No secrets in agent code.** Read from `os.environ` or the Settings object — never hardcode tokens, URLs, or credentials.
 5. **Keep scraper logic in `_fetch()`, DB logic in `_write_signals()`.** Don't mix concerns in `run()`.

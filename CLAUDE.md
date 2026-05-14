@@ -9,7 +9,7 @@ Cross-signal AI that monitors competitors across public data sources and infers 
 | Backend runtime | Python 3.12, FastAPI, Uvicorn |
 | Task queue | Celery + Redis |
 | Database | PostgreSQL 16 (async via asyncpg + SQLAlchemy 2.0) |
-| AI inference | Claude API (`claude-sonnet-4-20250514`) via `anthropic` SDK |
+| AI inference | Gemma 4 26B MoE via Vultr Serverless Inference (primary) or Ollama on a Vultr VM (fallback) — OpenAI-compatible API, `openai` Python SDK |
 | Frontend | React 18 + Vite 5, Recharts |
 | Containerization | Docker, Docker Compose (local dev) |
 | Orchestration | Kubernetes on Vultr Kubernetes Engine (VKE) |
@@ -28,7 +28,7 @@ Each scraper writes raw signal rows to the `signals` table in Postgres. Signals 
 
 A **SynthesisAgent** runs nightly at 00:00 UTC. It:
 1. Pulls all signals for each tracked company from the last N days.
-2. Calls the Claude API with a structured prompt asking it to reason across signals and produce strategic inferences.
+2. Calls the LLM (Gemma 4 26B MoE via Vultr Serverless Inference, falling back to Ollama) with a structured prompt asking it to reason across signals and produce strategic inferences.
 3. Writes inference rows to the `inferences` table with confidence scores (high/medium/low) and the IDs of signals that support each inference.
 
 ## Folder Structure
@@ -80,7 +80,7 @@ compint/
 
 - **All agents inherit from `BaseAgent`** defined in `backend/agents/__init__.py`. Never bypass this interface.
 - **All DB access goes through SQLAlchemy models** in `backend/db/models.py`. No raw SQL strings in agent code.
-- **All Claude API calls go through `backend/llm.py`** (single utility module). Never instantiate `anthropic.Anthropic()` outside that file.
+- **All LLM calls go through `backend/llm.py`** (single utility module). Never instantiate `openai.AsyncOpenAI()` outside that file.
 - **Never hardcode environment variables.** All secrets and config are loaded via `python-dotenv` from `.env` (local) or K8s Secrets (production).
 - **Scrapers must be idempotent.** Use `INSERT ... ON CONFLICT DO NOTHING` on `source_id` to prevent duplicate signals.
 - **Never commit code yourself.** Stage changes and present them — let the user commit.

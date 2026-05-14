@@ -1,45 +1,66 @@
 """
-Single entry point for all Claude API calls in Compint.
+Single entry point for all LLM inference calls in Compint.
 
 Rules:
-  - Never instantiate anthropic.Anthropic() outside this file.
-  - All agent inference calls go through call_claude().
-  - Uses prompt caching on the system prompt to reduce token costs on repeated synthesis runs.
+  - Never instantiate OpenAI() outside this file.
+  - All agent inference calls go through call_llm().
+  - Primary: Vultr Serverless Inference (OpenAI-compatible API, Gemma 4 26B MoE).
+  - Fallback: Ollama on a Vultr VM (same OpenAI-compatible interface, same model name).
 """
 
+import logging
 import os
 
-import anthropic
 from dotenv import load_dotenv
+from openai import AsyncOpenAI
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
-_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+MODEL = "gemma-4-26b-it"  # Gemma 4 26B MoE — served via Vultr Serverless Inference or Ollama
+
+_primary = AsyncOpenAI(
+    api_key=os.environ["VULTR_INFERENCE_API_KEY"],
+    base_url=os.environ["VULTR_INFERENCE_URL"],
+)
+
+# Ollama exposes an OpenAI-compatible API at /v1. No API key required.
+_fallback = AsyncOpenAI(
+    api_key="ollama",
+    base_url=os.environ.get("OLLAMA_URL", "http://localhost:11434/v1"),
+)
 
 
-async def call_claude(
+async def call_llm(
     system: str,
     user: str,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = MODEL,
     max_tokens: int = 4096,
 ) -> str:
     """
-    Call Claude and return the response text.
+    Call the LLM and return response text.
 
-    Uses prompt caching on the system prompt — the system prompt is large and
-    stable across synthesis runs for the same company, so caching saves ~90% of
-    system prompt token cost after the first call.
+    Tries Vultr Serverless Inference first. On any error, falls back to Ollama
+    on the local Vultr VM. Both endpoints speak the OpenAI Chat Completions API.
     """
-    response = _client.messages.create(
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+
+    try:
+        response = await _primary.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.warning(f"[llm] Primary (Vultr Serverless) failed: {e}. Falling back to Ollama.")
+
+    response = await _fallback.chat.completions.create(
         model=model,
+        messages=messages,
         max_tokens=max_tokens,
-        system=[
-            {
-                "type": "text",
-                "text": system,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[{"role": "user", "content": user}],
     )
-    return response.content[0].text
+    return response.choices[0].message.content

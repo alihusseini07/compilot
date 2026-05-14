@@ -24,11 +24,21 @@ spec:
             - configMapRef:
                 name: compint-config
           env:
-            - name: ANTHROPIC_API_KEY
+            - name: VULTR_INFERENCE_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: compint-secrets
-                  key: ANTHROPIC_API_KEY
+                  key: VULTR_INFERENCE_API_KEY
+            - name: VULTR_INFERENCE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: compint-secrets
+                  key: VULTR_INFERENCE_URL
+            - name: OLLAMA_URL
+              valueFrom:
+                secretKeyRef:
+                  name: compint-secrets
+                  key: OLLAMA_URL
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

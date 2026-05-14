@@ -86,7 +86,9 @@ kubectl get nodes  # verify
 
 ```bash
 kubectl create secret generic compint-secrets \
-  --from-literal=ANTHROPIC_API_KEY=your_key \
+  --from-literal=VULTR_INFERENCE_API_KEY=your_key \
+  --from-literal=VULTR_INFERENCE_URL=https://api.vultrinference.com/v1 \
+  --from-literal=OLLAMA_URL=http://<vultr-vm-ip>:11434/v1 \
   --from-literal=DATABASE_URL=postgresql+asyncpg://... \
   --from-literal=REDIS_URL=redis://... \
   --from-literal=GITHUB_TOKEN=ghp_...
@@ -109,7 +111,9 @@ kubectl apply -f k8s/news-scraper-cronjob.yaml
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_API_KEY` | Anthropic API key for Claude |
+| `VULTR_INFERENCE_API_KEY` | Vultr Serverless Inference API key |
+| `VULTR_INFERENCE_URL` | Vultr Serverless Inference base URL (e.g. `https://api.vultrinference.com/v1`) |
+| `OLLAMA_URL` | Ollama fallback base URL (e.g. `http://<vm-ip>:11434/v1`) |
 | `DATABASE_URL` | PostgreSQL connection string (asyncpg format) |
 | `REDIS_URL` | Redis connection string for Celery broker |
 | `GITHUB_TOKEN` | GitHub PAT with `public_repo` read scope |
