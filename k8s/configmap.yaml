@@ -7,4 +7,5 @@ data:
   PORT: "8000"
   LOG_LEVEL: "info"
   LOOKBACK_DAYS: "30"
-  SYNTHESIS_MODEL: "claude-sonnet-4-20250514"
+  OLLAMA_MODEL: "gemma4:26b"
+  # OLLAMA_HOST is in the compint-secrets Secret (contains the VM's internal IP)

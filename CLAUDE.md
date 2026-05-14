@@ -9,7 +9,7 @@ Cross-signal AI that monitors competitors across public data sources and infers 
 | Backend runtime | Python 3.12, FastAPI, Uvicorn |
 | Task queue | Celery + Redis |
 | Database | PostgreSQL 16 (async via asyncpg + SQLAlchemy 2.0) |
-| AI inference | Gemma 4 26B MoE via Vultr Serverless Inference (primary) or Ollama on a Vultr VM (fallback) — OpenAI-compatible API, `openai` Python SDK |
+| AI inference | Gemma 4 26B MoE (`gemma4:26b` Ollama tag, ~14 GB RAM) on a dedicated Vultr `vc2-4c-16gb` VM running Ollama — OpenAI-compatible API, `openai` Python SDK |
 | Frontend | React 18 + Vite 5, Recharts |
 | Containerization | Docker, Docker Compose (local dev) |
 | Orchestration | Kubernetes on Vultr Kubernetes Engine (VKE) |
@@ -28,7 +28,7 @@ Each scraper writes raw signal rows to the `signals` table in Postgres. Signals 
 
 A **SynthesisAgent** runs nightly at 00:00 UTC. It:
 1. Pulls all signals for each tracked company from the last N days.
-2. Calls the LLM (Gemma 4 26B MoE via Vultr Serverless Inference, falling back to Ollama) with a structured prompt asking it to reason across signals and produce strategic inferences.
+2. Calls Gemma 4 26B MoE via the Ollama instance on a dedicated Vultr VM (`OLLAMA_HOST`) using the `openai` SDK pointed at `http://<OLLAMA_HOST>:11434/v1`. The Ollama VM is on the same Vultr private network (VPC) as the K8s cluster for low-latency calls.
 3. Writes inference rows to the `inferences` table with confidence scores (high/medium/low) and the IDs of signals that support each inference.
 
 ## Folder Structure
@@ -49,7 +49,7 @@ compint/
 │   │   ├── jobs_agent.py      # Job posting scraper
 │   │   ├── patents_agent.py   # Patent filing scraper
 │   │   ├── pricing_agent.py   # Pricing page diff scraper
-│   │   └── synthesis_agent.py # Claude API reasoning agent
+│   │   └── synthesis_agent.py # Gemma 4 26B reasoning agent (via Ollama)
 │   ├── api/
 │   │   ├── __init__.py
 │   │   └── routes.py          # FastAPI route definitions
@@ -80,7 +80,7 @@ compint/
 
 - **All agents inherit from `BaseAgent`** defined in `backend/agents/__init__.py`. Never bypass this interface.
 - **All DB access goes through SQLAlchemy models** in `backend/db/models.py`. No raw SQL strings in agent code.
-- **All LLM calls go through `backend/llm.py`** (single utility module). Never instantiate `openai.AsyncOpenAI()` outside that file.
+- **All LLM inference is contained in `backend/agents/synthesis_agent.py`**, which instantiates the `openai.OpenAI` client pointed at the Ollama host directly. `backend/llm.py` exists as a shared client factory for future use. Never add a second Ollama client instantiation elsewhere.
 - **Never hardcode environment variables.** All secrets and config are loaded via `python-dotenv` from `.env` (local) or K8s Secrets (production).
 - **Scrapers must be idempotent.** Use `INSERT ... ON CONFLICT DO NOTHING` on `source_id` to prevent duplicate signals.
 - **Never commit code yourself.** Stage changes and present them — let the user commit.
@@ -92,6 +92,6 @@ compint/
 2. Frontend calls `POST /api/run-scrape` → backend triggers all 5 scraper agents via Celery tasks.
 3. Scrapers run in parallel, writing signals to Postgres.
 4. Frontend calls `POST /api/synthesize` → backend triggers `SynthesisAgent`.
-5. `SynthesisAgent` calls Claude API, writes inferences to Postgres.
+5. `SynthesisAgent` calls Gemma 4 26B via Ollama, writes inferences to Postgres.
 6. Frontend polls `GET /api/inferences/{company}` and `GET /api/signals/{company}`.
 7. Dashboard renders radar view (Recharts RadarChart) + signal timeline + inference cards.

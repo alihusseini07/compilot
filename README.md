@@ -4,7 +4,7 @@
 
 ## Core Insight
 
-No single signal tells the whole story. A new job posting is noise. But a new ML job posting + a dependency on `openai` appearing in their repo + a pricing page that added an "AI" tier — that's a product launch in 6 weeks. Compint runs five scrapers in parallel across GitHub, news, job boards, patents, and pricing pages, then asks Claude to reason across all of them simultaneously.
+No single signal tells the whole story. A new job posting is noise. But a new ML job posting + a dependency on `openai` appearing in their repo + a pricing page that added an "AI" tier — that's a product launch in 6 weeks. Compint runs five scrapers in parallel across GitHub, news, job boards, patents, and pricing pages, then asks Gemma 4 26B MoE (running on a private Ollama VM) to reason across all of them simultaneously.
 
 ## Quickstart (Local Dev)
 
@@ -14,7 +14,7 @@ No single signal tells the whole story. A new job posting is noise. But a new ML
 - Node 20+
 - Python 3.12+
 - A GitHub personal access token (read-only)
-- An Anthropic API key
+- An Ollama VM running `gemma4:26b` (see [Inference server setup](#inference-server-setup) below)
 
 ### 1. Clone and configure
 
@@ -67,6 +67,52 @@ curl -X POST http://localhost:8000/api/synthesize \
 
 ---
 
+## Inference Server Setup
+
+Compint runs Gemma 4 26B MoE via Ollama on a **separate** Vultr VM, not inside the K8s cluster. This keeps GPU/RAM requirements isolated and lets you swap models without redeploying the cluster.
+
+### 1. Provision the VM
+
+- Type: `vc2-4c-16gb` (4 vCPU, 16 GB RAM — required for `gemma4:26b` at ~14 GB RAM)
+- OS: Ubuntu 24.04 LTS
+- Region: same as your VKE cluster
+- Attach it to the **same Vultr VPC** as the cluster so internal IPs route correctly
+
+### 2. Run the setup script
+
+SSH into the VM and run:
+
+```bash
+bash infra/ollama-setup.sh
+```
+
+This will:
+- Install Ollama via the official installer
+- Configure Ollama to bind on all interfaces (`OLLAMA_HOST=0.0.0.0`) so the K8s cluster can reach it
+- Pull `gemma4:26b` (~14 GB download, takes several minutes)
+- Print the VM's internal IP and confirm the model is loaded
+
+### 3. Note the internal IP
+
+The script prints the VM's internal IP at the end. Add it to your `.env`:
+
+```bash
+OLLAMA_HOST=10.x.x.x   # internal IP printed by the script
+OLLAMA_MODEL=gemma4:26b
+```
+
+And add to your K8s secret:
+
+```bash
+kubectl create secret generic compint-secrets \
+  --from-literal=OLLAMA_HOST=10.x.x.x \
+  # ... other secrets
+```
+
+> **Important:** The K8s cluster and Ollama VM must be on the same Vultr VPC. If they are not, the synthesis agent will fail to connect to `OLLAMA_HOST`. Do not use the public IP — use the internal IP for low latency and no egress cost.
+
+---
+
 ## Deploy to Vultr Kubernetes Engine (VKE)
 
 ### 1. Provision a VKE cluster
@@ -86,9 +132,7 @@ kubectl get nodes  # verify
 
 ```bash
 kubectl create secret generic compint-secrets \
-  --from-literal=VULTR_INFERENCE_API_KEY=your_key \
-  --from-literal=VULTR_INFERENCE_URL=https://api.vultrinference.com/v1 \
-  --from-literal=OLLAMA_URL=http://<vultr-vm-ip>:11434/v1 \
+  --from-literal=OLLAMA_HOST=10.x.x.x \
   --from-literal=DATABASE_URL=postgresql+asyncpg://... \
   --from-literal=REDIS_URL=redis://... \
   --from-literal=GITHUB_TOKEN=ghp_...
@@ -111,9 +155,8 @@ kubectl apply -f k8s/news-scraper-cronjob.yaml
 
 | Variable | Description |
 |----------|-------------|
-| `VULTR_INFERENCE_API_KEY` | Vultr Serverless Inference API key |
-| `VULTR_INFERENCE_URL` | Vultr Serverless Inference base URL (e.g. `https://api.vultrinference.com/v1`) |
-| `OLLAMA_URL` | Ollama fallback base URL (e.g. `http://<vm-ip>:11434/v1`) |
+| `OLLAMA_HOST` | Internal IP of the Ollama inference VM (e.g. `10.x.x.x`) |
+| `OLLAMA_MODEL` | Ollama model tag (default: `gemma4:26b`) |
 | `DATABASE_URL` | PostgreSQL connection string (asyncpg format) |
 | `REDIS_URL` | Redis connection string for Celery broker |
 | `GITHUB_TOKEN` | GitHub PAT with `public_repo` read scope |
@@ -132,7 +175,7 @@ kubectl apply -f k8s/news-scraper-cronjob.yaml
       │                                                                  │
       │                                          [Synthesis Agent] ◄────┘
       │                                                  │
-      │                                          [Claude API]
+      │                                          [Ollama VM — Gemma 4 26B]
       │                                                  │
       └──────────────── GET /inferences ◄───────────────┘
 ```

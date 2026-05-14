@@ -1,26 +1,36 @@
 """
-SynthesisAgent — reasons across all signals for a company using Gemma 4 26B MoE.
+SynthesisAgent — reasons across all signals for a company using Gemma 4 26B MoE via Ollama.
 
-This is the ONLY file that calls the LLM. All inference calls go through
-backend/llm.py. Never add openai SDK calls elsewhere.
+This is the ONLY file that calls the LLM. The openai SDK is pointed at the Ollama
+instance on a dedicated Vultr VM (OLLAMA_HOST env var). Ollama doesn't require a real
+API key, so api_key="ollama" is used as a placeholder.
 
-Model is served via Vultr Serverless Inference (primary) or Ollama on a Vultr VM (fallback).
+Model tag: gemma4:26b (run `ollama pull gemma4:26b` on the VM before deploying).
 Output: rows in the `inferences` table with confidence scores and supporting signal IDs.
 """
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
+from dotenv import load_dotenv
+from openai import OpenAI
 from sqlalchemy import select
 
 from db.models import Inference, Signal, async_session
-from llm import call_llm
 
+load_dotenv()
 logger = logging.getLogger(__name__)
 
 LOOKBACK_DAYS = 30
-MODEL = "gemma-4-26b-it"
+MODEL = os.getenv("OLLAMA_MODEL", "gemma4:26b")
+
+_ollama_host = os.getenv("OLLAMA_HOST", "localhost")
+_client = OpenAI(
+    base_url=f"http://{_ollama_host}:11434/v1",
+    api_key="ollama",  # Ollama does not require a real key
+)
 
 SYSTEM_PROMPT = """You are a competitive intelligence analyst with deep expertise in reading weak signals \
 from public data sources to infer a company's strategic direction before it is announced.
@@ -40,7 +50,9 @@ Confidence rules:
 
 Categories: product | gtm | hiring | funding | technical | regulatory
 
-Respond ONLY with a valid JSON array. No markdown, no explanation outside the JSON."""
+You MUST respond with a valid JSON object containing a single key "inferences" whose value is an array. \
+Each element of the array must have exactly these keys: inference, confidence, category, reasoning, \
+supporting_signal_ids. No markdown, no explanation outside the JSON object."""
 
 USER_PROMPT_TEMPLATE = """Company: {company}
 Analysis window: {start_date} to {end_date}
@@ -48,14 +60,15 @@ Analysis window: {start_date} to {end_date}
 Signals ({count} total):
 {signals_json}
 
-Produce a JSON array of strategic inferences. Each object must have exactly these keys:
+Produce a JSON object with key "inferences" containing an array of strategic inferences. \
+Each object in the array must have exactly these keys:
 - "inference": string — the specific strategic move you're inferring
 - "confidence": "high" | "medium" | "low"
 - "category": one of [product, gtm, hiring, funding, technical, regulatory]
 - "reasoning": string — which signals led you here and why
 - "supporting_signal_ids": array of integer signal IDs from the input
 
-Return [] if no meaningful inferences can be drawn."""
+Return {{"inferences": []}} if no meaningful inferences can be drawn."""
 
 
 class SynthesisAgent:
@@ -80,7 +93,7 @@ class SynthesisAgent:
                 select(Signal)
                 .where(Signal.company == company, Signal.scraped_at >= cutoff)
                 .order_by(Signal.scraped_at.desc())
-                .limit(200)  # token budget guard
+                .limit(200)  # context window guard
             )
             result = await session.execute(stmt)
             rows = result.scalars().all()
@@ -90,7 +103,7 @@ class SynthesisAgent:
         end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         start_date = (datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")
 
-        # Include only fields the model needs — reduces token cost
+        # Include only fields the model needs — reduces context usage
         slim_signals = [
             {"id": s["id"], "source_type": s["source_type"], "content": s["content"], "scraped_at": s["scraped_at"]}
             for s in signals
@@ -104,18 +117,28 @@ class SynthesisAgent:
             signals_json=json.dumps(slim_signals, indent=2),
         )
 
-        raw = await call_llm(
-            system=SYSTEM_PROMPT,
-            user=user_prompt,
-            model=MODEL,
-            max_tokens=4096,
-        )
+        try:
+            response = _client.chat.completions.create(
+                model=MODEL,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.2,
+                response_format={"type": "json_object"},
+                max_tokens=4096,
+            )
+            raw = response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"[synthesis] Ollama call failed: {e}")
+            return []
 
         try:
             parsed = json.loads(raw)
-            if not isinstance(parsed, list):
-                raise ValueError("Expected JSON array")
-            return parsed
+            inferences = parsed.get("inferences", [])
+            if not isinstance(inferences, list):
+                raise ValueError("'inferences' key must be an array")
+            return inferences
         except (json.JSONDecodeError, ValueError) as e:
             logger.error(f"[synthesis] Model returned invalid JSON: {e}\nRaw: {raw[:500]}")
             return []

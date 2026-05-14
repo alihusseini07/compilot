@@ -1,66 +1,26 @@
 """
-Single entry point for all LLM inference calls in Compint.
+Ollama client factory for Compint.
 
-Rules:
-  - Never instantiate OpenAI() outside this file.
-  - All agent inference calls go through call_llm().
-  - Primary: Vultr Serverless Inference (OpenAI-compatible API, Gemma 4 26B MoE).
-  - Fallback: Ollama on a Vultr VM (same OpenAI-compatible interface, same model name).
+The synthesis agent instantiates its own client directly (see synthesis_agent.py).
+This module is kept as a shared utility for any future agent that needs LLM access
+without owning client lifecycle management.
+
+Inference backend: Ollama on a dedicated Vultr vc2-4c-16gb VM.
+Model: gemma4:26b (Ollama tag). Run `ollama pull gemma4:26b` on the VM first.
+Endpoint: http://<OLLAMA_HOST>:11434/v1  (OpenAI-compatible)
+API key: "ollama" (Ollama does not require a real key)
 """
 
-import logging
 import os
 
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
+from openai import OpenAI
 
 load_dotenv()
-logger = logging.getLogger(__name__)
 
-MODEL = "gemma-4-26b-it"  # Gemma 4 26B MoE — served via Vultr Serverless Inference or Ollama
+_ollama_host = os.getenv("OLLAMA_HOST", "localhost")
 
-_primary = AsyncOpenAI(
-    api_key=os.environ["VULTR_INFERENCE_API_KEY"],
-    base_url=os.environ["VULTR_INFERENCE_URL"],
-)
-
-# Ollama exposes an OpenAI-compatible API at /v1. No API key required.
-_fallback = AsyncOpenAI(
+client = OpenAI(
+    base_url=f"http://{_ollama_host}:11434/v1",
     api_key="ollama",
-    base_url=os.environ.get("OLLAMA_URL", "http://localhost:11434/v1"),
 )
-
-
-async def call_llm(
-    system: str,
-    user: str,
-    model: str = MODEL,
-    max_tokens: int = 4096,
-) -> str:
-    """
-    Call the LLM and return response text.
-
-    Tries Vultr Serverless Inference first. On any error, falls back to Ollama
-    on the local Vultr VM. Both endpoints speak the OpenAI Chat Completions API.
-    """
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
-
-    try:
-        response = await _primary.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=max_tokens,
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        logger.warning(f"[llm] Primary (Vultr Serverless) failed: {e}. Falling back to Ollama.")
-
-    response = await _fallback.chat.completions.create(
-        model=model,
-        messages=messages,
-        max_tokens=max_tokens,
-    )
-    return response.choices[0].message.content

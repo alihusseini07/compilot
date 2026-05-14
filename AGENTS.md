@@ -159,16 +159,25 @@ Claude Code rule: **never skip the base class**. If you add a new scraper, exten
 ## Synthesis Agent (`synthesis_agent.py`)
 
 **Schedule:** Nightly at midnight UTC (`0 0 * * *`)  
-**Model:** Gemma 4 26B MoE (`gemma-4-26b-it`) — served via Vultr Serverless Inference (primary) or Ollama on a Vultr VM (fallback). Both endpoints speak the OpenAI Chat Completions API.  
-**All LLM calls go through `backend/llm.py` — never call `openai.AsyncOpenAI()` directly here.**
+**Model:** Gemma 4 26B MoE — Ollama model tag `gemma4:26b`, ~14 GB RAM usage. Requires `ollama pull gemma4:26b` on the inference VM before deploying.  
+**Inference server:** Ollama on a dedicated Vultr `vc2-4c-16gb` VM, separate from the K8s cluster but on the same Vultr VPC. Exposes an OpenAI-compatible endpoint at `http://<OLLAMA_HOST>:11434/v1`.  
+**Client:** `openai.OpenAI(base_url=f"http://{OLLAMA_HOST}:11434/v1", api_key="ollama")` — Ollama does not require a real API key.  
+**All LLM calls are contained in `synthesis_agent.py` — never instantiate the Ollama client elsewhere.**
+
+### API Call Parameters
+
+- `temperature=0.2` — low temperature for deterministic structured reasoning, not creative generation
+- `response_format={"type": "json_object"}` — forces Ollama to return valid JSON
+- `max_tokens=4096`
 
 ### Prompt Structure
 
+The system prompt instructs the model to respond **only** with a JSON object matching the schema below. No markdown, no prose outside the JSON.
+
 ```
 System:
-You are a competitive intelligence analyst. You reason across weak signals from multiple public data
-sources to infer a company's strategic direction before they announce it. Be specific, cite evidence,
-and assign confidence levels.
+You are a competitive intelligence analyst. Respond ONLY with a valid JSON object with key
+"inferences" containing an array. Each element must match the inference schema exactly.
 
 User:
 Company: {company_name}
@@ -177,7 +186,8 @@ Analysis window: {start_date} to {end_date}
 Signals (JSON array):
 {signals_json}
 
-Produce a JSON array of strategic inferences. Each inference must follow this schema exactly.
+Produce a JSON object {"inferences": [...]} of strategic inferences.
+Return {"inferences": []} if no meaningful inferences can be drawn.
 ```
 
 ### Expected Response Schema
@@ -196,7 +206,7 @@ Produce a JSON array of strategic inferences. Each inference must follow this sc
 
 ### Confidence Score Assignment
 
-Claude is instructed to assign confidence based on signal corroboration:
+The model is instructed to assign confidence based on signal corroboration:
 - **high** — 3+ independent signal sources agree on same strategic direction
 - **medium** — 2 sources agree, or 1 strong source (e.g., patent filing)
 - **low** — single weak signal (e.g., one job posting), speculative
@@ -210,7 +220,7 @@ Claude is instructed to assign confidence based on signal corroboration:
 ## Claude Code Working Rules for Agents
 
 1. **Maintain BaseAgent interface.** Every scraper must implement `async def run(company: str) -> list[dict]` and call `await self._write_signals(signals)`.
-2. **Never call the LLM outside `synthesis_agent.py`.** All inference calls route through `backend/llm.py`. Never instantiate `openai.AsyncOpenAI()` elsewhere.
+2. **Never call the LLM outside `synthesis_agent.py`.** The Ollama client is instantiated there. `backend/llm.py` is a shared factory — do not add a second client instantiation elsewhere.
 3. **Scrapers must be idempotent.** Every signal must have a stable `source_id`. Use `INSERT ... ON CONFLICT (source_id) DO NOTHING`.
 4. **No secrets in agent code.** Read from `os.environ` or the Settings object — never hardcode tokens, URLs, or credentials.
 5. **Keep scraper logic in `_fetch()`, DB logic in `_write_signals()`.** Don't mix concerns in `run()`.
