@@ -1,4 +1,4 @@
-# Compint — Agent System Reference
+# Compilot — Agent System Reference
 
 ## Agent Architecture
 

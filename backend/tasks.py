@@ -10,10 +10,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+_redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+# Managed Redis with SSL requires ssl_cert_reqs param
+if _redis_url.startswith("rediss://") and "ssl_cert_reqs" not in _redis_url:
+    _redis_url += ("&" if "?" in _redis_url else "?") + "ssl_cert_reqs=CERT_NONE"
+
 celery_app = Celery(
-    "compint",
-    broker=os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
-    backend=os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+    "compilot",
+    broker=_redis_url,
+    backend=_redis_url,
 )
 
 celery_app.conf.update(task_serializer="json", result_serializer="json", accept_content=["json"])

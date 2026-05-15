@@ -1,4 +1,4 @@
-# Compint — Competitive Intelligence Radar
+# Compilot — Competitive Intelligence Radar
 
 Cross-signal AI that monitors competitors across public data sources and infers strategic moves before they're announced.
 
@@ -34,7 +34,7 @@ A **SynthesisAgent** runs nightly at 00:00 UTC. It:
 ## Folder Structure
 
 ```
-compint/
+compilot/
 ├── CLAUDE.md              # This file — project context for Claude Code
 ├── AGENTS.md              # Agent system documentation and contracts
 ├── README.md              # Human-facing quickstart and deploy guide

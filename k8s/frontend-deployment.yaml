@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: compint-frontend
+  name: compilot-frontend
   namespace: default
   labels:
-    app: compint-frontend
+    app: compilot-frontend
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: compint-frontend
+      app: compilot-frontend
   template:
     metadata:
       labels:
-        app: compint-frontend
+        app: compilot-frontend
     spec:
       containers:
         - name: frontend
-          image: your-registry/compint-frontend:latest
+          image: ahusseini07/compilot-frontend:latest
           ports:
             - containerPort: 80
           resources:
@@ -31,11 +31,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: compint-frontend
+  name: compilot-frontend
   namespace: default
 spec:
   selector:
-    app: compint-frontend
+    app: compilot-frontend
   ports:
     - protocol: TCP
       port: 80

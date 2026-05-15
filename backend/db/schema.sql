@@ -1,4 +1,4 @@
--- Compint PostgreSQL Schema
+-- Compilot PostgreSQL Schema
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 

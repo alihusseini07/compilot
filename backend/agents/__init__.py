@@ -1,5 +1,5 @@
 """
-Base class for all Compint scraper agents.
+Base class for all Compilot scraper agents.
 
 All scrapers must extend BaseAgent and implement _fetch().
 The run() method orchestrates fetch → write and should not be overridden.
@@ -57,7 +57,7 @@ class BaseAgent(ABC):
                         source_type=self.source_type,
                         source_id=sig["source_id"],
                         content=sig["content"],
-                        metadata=sig.get("metadata", {}),
+                        raw_metadata=sig.get("metadata", {}),
                     )
                     .on_conflict_do_nothing(index_elements=["source_id"])
                     .returning(Signal.id)

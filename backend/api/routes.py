@@ -1,5 +1,5 @@
 """
-FastAPI route definitions for the Compint backend.
+FastAPI route definitions for the Compilot backend.
 
 Endpoints:
   POST /api/run-scrape     — trigger all 5 scrapers for a company (via Celery)

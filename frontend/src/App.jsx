@@ -55,7 +55,7 @@ export default function App() {
     <div style={{ minHeight: "100vh", background: "#0f172a", color: "#e2e8f0", fontFamily: "Inter, sans-serif", padding: "2rem" }}>
       <header style={{ marginBottom: "2rem" }}>
         <h1 style={{ fontSize: "1.75rem", fontWeight: 700, color: "#f8fafc", marginBottom: "0.25rem" }}>
-          Compint
+          Compilot
         </h1>
         <p style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
           Competitive intelligence radar — infer strategy before it's announced.

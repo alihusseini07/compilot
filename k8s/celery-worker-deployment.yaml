@@ -1,34 +1,28 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: compilot-backend
+  name: compilot-celery-worker
   namespace: default
   labels:
-    app: compilot-backend
+    app: compilot-celery-worker
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
-      app: compilot-backend
+      app: compilot-celery-worker
   template:
     metadata:
       labels:
-        app: compilot-backend
+        app: compilot-celery-worker
     spec:
       containers:
-        - name: backend
+        - name: worker
           image: ahusseini07/compilot-backend:latest
-          ports:
-            - containerPort: 8000
+          command: ["celery", "-A", "tasks.celery_app", "worker", "--loglevel=info"]
           envFrom:
             - configMapRef:
                 name: compilot-config
           env:
-            - name: OLLAMA_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: compilot-secrets
-                  key: OLLAMA_HOST
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -44,6 +38,11 @@ spec:
                 secretKeyRef:
                   name: compilot-secrets
                   key: GITHUB_TOKEN
+            - name: OLLAMA_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: compilot-secrets
+                  key: OLLAMA_HOST
           resources:
             requests:
               cpu: "250m"
@@ -51,29 +50,3 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
-          livenessProbe:
-            httpGet:
-              path: /api/health
-              port: 8000
-            initialDelaySeconds: 15
-            periodSeconds: 20
-          readinessProbe:
-            httpGet:
-              path: /api/health
-              port: 8000
-            initialDelaySeconds: 5
-            periodSeconds: 10
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: compilot-backend
-  namespace: default
-spec:
-  selector:
-    app: compilot-backend
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 8000
-  type: ClusterIP

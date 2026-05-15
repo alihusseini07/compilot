@@ -55,7 +55,7 @@ class PricingAgent(BaseAgent):
         try:
             async with httpx.AsyncClient(
                 timeout=15,
-                headers={"User-Agent": "Mozilla/5.0 (compatible; CompintBot/1.0)"},
+                headers={"User-Agent": "Mozilla/5.0 (compatible; CompilotBot/1.0)"},
                 follow_redirects=True,
             ) as client:
                 resp = await client.get(url)

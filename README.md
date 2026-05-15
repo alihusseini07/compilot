@@ -1,10 +1,10 @@
-# Compint — Competitive Intelligence Radar
+# Compilot — Competitive Intelligence Radar
 
 > Cross-signal AI that monitors competitors across public data sources and infers their strategic moves before they're announced.
 
 ## Core Insight
 
-No single signal tells the whole story. A new job posting is noise. But a new ML job posting + a dependency on `openai` appearing in their repo + a pricing page that added an "AI" tier — that's a product launch in 6 weeks. Compint runs five scrapers in parallel across GitHub, news, job boards, patents, and pricing pages, then asks Gemma 4 26B MoE (running on a private Ollama VM) to reason across all of them simultaneously.
+No single signal tells the whole story. A new job posting is noise. But a new ML job posting + a dependency on `openai` appearing in their repo + a pricing page that added an "AI" tier — that's a product launch in 6 weeks. Compilot runs five scrapers in parallel across GitHub, news, job boards, patents, and pricing pages, then asks Gemma 4 26B MoE (running on a private Ollama VM) to reason across all of them simultaneously.
 
 ## Quickstart (Local Dev)
 
@@ -19,8 +19,8 @@ No single signal tells the whole story. A new job posting is noise. But a new ML
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/your-org/compint.git
-cd compint
+git clone https://github.com/your-org/compilot.git
+cd compilot
 cp .env.example .env
 # Edit .env and fill in your actual keys
 ```
@@ -69,7 +69,7 @@ curl -X POST http://localhost:8000/api/synthesize \
 
 ## Inference Server Setup
 
-Compint runs Gemma 4 26B MoE via Ollama on a **separate** Vultr VM, not inside the K8s cluster. This keeps GPU/RAM requirements isolated and lets you swap models without redeploying the cluster.
+Compilot runs Gemma 4 26B MoE via Ollama on a **separate** Vultr VM, not inside the K8s cluster. This keeps GPU/RAM requirements isolated and lets you swap models without redeploying the cluster.
 
 ### 1. Provision the VM
 
@@ -104,7 +104,7 @@ OLLAMA_MODEL=gemma4:26b
 And add to your K8s secret:
 
 ```bash
-kubectl create secret generic compint-secrets \
+kubectl create secret generic compilot-secrets \
   --from-literal=OLLAMA_HOST=10.x.x.x \
   # ... other secrets
 ```
@@ -131,7 +131,7 @@ kubectl get nodes  # verify
 ### 3. Create secrets
 
 ```bash
-kubectl create secret generic compint-secrets \
+kubectl create secret generic compilot-secrets \
   --from-literal=OLLAMA_HOST=10.x.x.x \
   --from-literal=DATABASE_URL=postgresql+asyncpg://... \
   --from-literal=REDIS_URL=redis://... \

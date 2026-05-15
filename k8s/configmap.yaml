@@ -1,11 +1,12 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: compint-config
+  name: compilot-config
   namespace: default
 data:
   PORT: "8000"
   LOG_LEVEL: "info"
   LOOKBACK_DAYS: "30"
   OLLAMA_MODEL: "gemma4:26b"
-  # OLLAMA_HOST is in the compint-secrets Secret (contains the VM's internal IP)
+  CORS_ORIGINS: "http://155.138.128.101"
+  # OLLAMA_HOST is in the compilot-secrets Secret (contains the VM's internal IP)

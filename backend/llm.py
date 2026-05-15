@@ -1,5 +1,5 @@
 """
-Ollama client factory for Compint.
+Ollama client factory for Compilot.
 
 The synthesis agent instantiates its own client directly (see synthesis_agent.py).
 This module is kept as a shared utility for any future agent that needs LLM access

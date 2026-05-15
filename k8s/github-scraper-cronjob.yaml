@@ -16,7 +16,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: github-scraper
-              image: your-registry/compint-backend:latest
+              image: ahusseini07/compilot-backend:latest
               command:
                 - python
                 - -c

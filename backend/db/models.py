@@ -20,6 +20,11 @@ from sqlalchemy.orm import DeclarativeBase
 load_dotenv()
 
 DATABASE_URL = os.environ["DATABASE_URL"]
+# Normalize to asyncpg driver regardless of how the URL is provided
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 engine = create_async_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -39,7 +44,7 @@ class Signal(Base):
     source_type = Column(String, nullable=False)
     source_id = Column(String, nullable=False, unique=True)
     content = Column(Text, nullable=False)
-    metadata = Column(JSONB, nullable=False, default=dict)
+    raw_metadata = Column("metadata", JSONB, nullable=False, default=dict)
     scraped_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     def to_dict(self) -> dict:
@@ -49,7 +54,7 @@ class Signal(Base):
             "source_type": self.source_type,
             "source_id": self.source_id,
             "content": self.content,
-            "metadata": self.metadata,
+            "metadata": self.raw_metadata,
             "scraped_at": self.scraped_at.isoformat() if self.scraped_at else None,
         }
 
