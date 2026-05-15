@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: your-registry/compint-backend:latest
+          image: ahusseini07/compilot-backend:latest
           ports:
             - containerPort: 8000
           envFrom:
