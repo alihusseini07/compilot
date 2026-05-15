@@ -69,7 +69,7 @@ export default function App() {
       }
 
       setInferences(inferences);
-      setStatus(inferences.length > 0 ? "Done." : `Done. ${signals.length} signals, synthesis timed out (Ollama unreachable locally).`);
+      setStatus(inferences.length > 0 ? "Done." : `Done. ${signals.length} signals collected. Synthesis timed out — inferences may still be processing.`);
     } catch (err) {
       setStatus(`Error: ${err.message}`);
     } finally {
