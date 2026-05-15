@@ -1,0 +1,26 @@
+services:
+  backend:
+    build: ./backend
+    container_name: compilot-backend
+    env_file: .env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  worker:
+    build: ./backend
+    container_name: compilot-worker
+    command: celery -A tasks.celery_app worker --loglevel=info
+    env_file: .env
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: compilot-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
