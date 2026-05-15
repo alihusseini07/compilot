@@ -18,32 +18,58 @@ export default function App() {
     setLoading(true);
     setStatus("Running scrapers...");
 
+    const slug = company.toLowerCase();
+
     try {
       await fetch(`${API}/run-scrape`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company: company.toLowerCase() }),
+        body: JSON.stringify({ company: slug }),
       });
 
-      setStatus("Synthesizing with Claude...");
+      // Poll until signals appear or 90s timeout
+      setStatus("Scraping signals… (this takes ~30–60s)");
+      let signals = [];
+      const deadline = Date.now() + 90_000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const resp = await fetch(`${API}/signals/${slug}`);
+        const data = await resp.json();
+        signals = data.signals || [];
+        if (signals.length > 0) break;
+        setStatus(`Scraping signals… (${signals.length} so far)`);
+      }
+
+      setSignals(signals);
+      setSubmittedCompany(company);
+
+      if (signals.length === 0) {
+        setStatus("No signals found. Check worker logs.");
+        setLoading(false);
+        return;
+      }
+
+      setStatus(`Got ${signals.length} signals. Synthesizing inferences…`);
       await fetch(`${API}/synthesize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company: company.toLowerCase() }),
+        body: JSON.stringify({ company: slug }),
       });
 
-      setStatus("Fetching results...");
-      const [sigResp, infResp] = await Promise.all([
-        fetch(`${API}/signals/${company.toLowerCase()}`),
-        fetch(`${API}/inferences/${company.toLowerCase()}`),
-      ]);
-      const sigData = await sigResp.json();
-      const infData = await infResp.json();
+      // Poll for inferences (synthesis takes longer — Ollama call)
+      let inferences = [];
+      const infDeadline = Date.now() + 120_000;
+      while (Date.now() < infDeadline) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const resp = await fetch(`${API}/inferences/${slug}`);
+        const data = await resp.json();
+        inferences = data.inferences || [];
+        if (inferences.length > 0) break;
+        setStatus(`Synthesizing… (waiting for Ollama)`);
+      }
 
-      setSignals(sigData.signals || []);
-      setInferences(infData.inferences || []);
-      setSubmittedCompany(company);
-      setStatus("Done.");
+      setInferences(inferences);
+      setStatus(inferences.length > 0 ? "Done." : `Done. ${signals.length} signals, synthesis timed out (Ollama unreachable locally).`);
     } catch (err) {
       setStatus(`Error: ${err.message}`);
     } finally {
