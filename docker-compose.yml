@@ -1,10 +1,32 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: compilot-redis
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: compilot-postgres
+    environment:
+      POSTGRES_USER: compilot
+      POSTGRES_PASSWORD: compilot
+      POSTGRES_DB: compilot
+    volumes:
+      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    restart: unless-stopped
+
   backend:
     build: ./backend
     container_name: compilot-backend
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://compilot:compilot@postgres:5432/compilot
     ports:
       - "8000:8000"
+    depends_on:
+      - redis
+      - postgres
     restart: unless-stopped
 
   worker:
@@ -12,8 +34,12 @@ services:
     container_name: compilot-worker
     command: celery -A tasks.celery_app worker --loglevel=info
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://compilot:compilot@postgres:5432/compilot
     depends_on:
-      - backend
+      - redis
+      - postgres
     restart: unless-stopped
 
   frontend:
