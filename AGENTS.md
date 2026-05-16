@@ -217,6 +217,30 @@ The model is instructed to assign confidence based on signal corroboration:
 
 ---
 
+## Environments
+
+### Local (Docker Compose)
+- Start: `docker compose up --build -d` from project root
+- Frontend: `http://localhost` | Backend API: `http://localhost:8000`
+- Services: redis, postgres, backend, worker, frontend
+
+### Production (Vultr Kubernetes Engine)
+- Cluster: `vke-7b1cece3-84d5-401c-a08d-a4bb3c290098` (2 nodes, Vultr VKE)
+- Kubeconfig: `~/.kube/config` — copy from `/mnt/c/Users/ahuss/Downloads/vke-7b1cece3-84d5-401c-a08d-a4bb3c290098.yaml` if missing
+- Frontend external IP: `http://155.138.128.101`
+- Namespace: `default`
+- Apply manifests: `kubectl apply -f k8s/`
+- Key commands:
+  ```bash
+  kubectl get all                          # cluster overview
+  kubectl logs -f deployment/compilot-backend  # backend logs
+  kubectl logs -f deployment/compilot-celery-worker  # worker logs
+  kubectl get cronjobs                     # scraper schedules
+  kubectl create job --from=cronjob/<name> <job-name>  # trigger scraper manually
+  ```
+- **Secrets** are in K8s Secret `compilot-secrets` — never read from `.env` in prod
+- Two known failing jobs as of 2026-05-16: `pricing-scraper`, `synthesis-agent` — investigate before running
+
 ## Claude Code Working Rules for Agents
 
 1. **Maintain BaseAgent interface.** Every scraper must implement `async def run(company: str) -> list[dict]` and call `await self._write_signals(signals)`.
