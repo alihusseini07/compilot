@@ -13,10 +13,10 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import router
+from api.routes import legacy, router
 from tasks import celery_app  # re-export so Celery CLI can find it
 
-app = FastAPI(title="Compilot API", version="0.1.0")
+app = FastAPI(title="Compilot API", version="0.2.0")
 
 _origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
 
@@ -29,3 +29,4 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(legacy)

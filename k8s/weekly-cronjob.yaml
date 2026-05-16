@@ -1,11 +1,12 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: synthesis-agent
+  name: compilot-weekly
   namespace: default
 spec:
-  # Run nightly at midnight UTC
-  schedule: "0 0 * * *"
+  # Mondays at 00:00 UTC — WeeklySynthesisAgent reads 7 daily reports
+  # (or falls back to direct scrape with last_7_days).
+  schedule: "0 0 * * 1"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -15,20 +16,21 @@ spec:
         spec:
           restartPolicy: OnFailure
           containers:
-            - name: synthesis
+            - name: orchestrator
               image: ahusseini07/compilot-backend:latest
-              # Run synthesis for all tracked companies. Extend this list as needed.
               command:
                 - python
                 - -c
                 - |
                   import asyncio, os
-                  from agents.synthesis_agent import SynthesisAgent
+                  from agents.orchestrator import run
                   companies = os.environ.get("TRACKED_COMPANIES", "linear").split(",")
                   async def main():
-                      agent = SynthesisAgent()
                       for c in companies:
-                          await agent.run(c.strip())
+                          try:
+                              await run(c.strip(), "weekly")
+                          except Exception as e:
+                              print(f"[weekly-cronjob] failed for {c.strip()}: {e}")
                   asyncio.run(main())
               env:
                 - name: OLLAMA_HOST
@@ -51,10 +53,21 @@ spec:
                     secretKeyRef:
                       name: compilot-secrets
                       key: OLLAMA_MODEL
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: compilot-secrets
+                      key: GITHUB_TOKEN
+                      optional: true
+                - name: LENS_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: compilot-secrets
+                      key: LENS_API_TOKEN
+                      optional: true
                 - name: TRACKED_COMPANIES
                   value: "linear,notion,figma"
               resources:
-                # Sized for vc2-2c-4gb Vultr node (2 vCPU, 4 GB RAM)
                 requests:
                   cpu: "500m"
                   memory: "512Mi"

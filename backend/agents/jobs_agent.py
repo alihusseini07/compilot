@@ -1,17 +1,9 @@
 """
-JobsAgent — scrapes public job postings to detect hiring signal patterns.
+JobsAgent — hiring signals from Greenhouse, Lever, Workday, and LinkedIn.
 
-Sources (tried in order for each company):
-  - Greenhouse public job board API
-  - Lever public postings API
-  - Workday (best-effort, company-specific subdomain)
-  - LinkedIn Jobs public search HTML
-
-Hiring signal classification:
-  - ML/AI roles → AI product development
-  - Enterprise sales → GTM shift upmarket
-  - Security/compliance → enterprise readiness
-  - Infrastructure/platform → scaling phase
+Returns a conclusion object describing what the company's hiring pattern reveals
+about strategic priorities. Raw signals are not persisted — only the LLM
+conclusion is consumed downstream by the synthesis tiers.
 """
 
 import hashlib
@@ -21,7 +13,7 @@ import re
 import httpx
 from bs4 import BeautifulSoup
 
-from agents import BaseAgent
+from agents.base_agent import BaseAgent
 
 logger = logging.getLogger(__name__)
 
@@ -36,35 +28,46 @@ def _classify_keywords(description: str) -> list[str]:
     return found[:10]
 
 
-def _stable_id(platform: str, job_id: str) -> str:
-    return f"job:{platform}:{job_id}"
-
-
 class JobsAgent(BaseAgent):
-    source_type = "jobs"
+    agent_name = "jobs"
 
-    async def _fetch(self, company: str) -> list[dict]:
-        signals = []
+    async def _fetch(self, company: str, date_range: str) -> list[dict]:
+        data: list[dict] = []
         async with httpx.AsyncClient(
             timeout=15,
             headers={"User-Agent": "Mozilla/5.0 (compatible; CompilotBot/1.0)"},
             follow_redirects=True,
         ) as client:
-            signals += await self._fetch_greenhouse(client, company)
-            signals += await self._fetch_lever(client, company)
-            signals += await self._fetch_workday(client, company)
-            signals += await self._fetch_linkedin(client, company)
+            data += await self._fetch_greenhouse(client, company)
+            data += await self._fetch_lever(client, company)
+            data += await self._fetch_workday(client, company)
+            data += await self._fetch_linkedin(client, company)
 
-        # Deduplicate by source_id across platforms
-        seen = set()
-        unique = []
-        for s in signals:
-            if s["source_id"] not in seen:
-                seen.add(s["source_id"])
-                unique.append(s)
+        seen, unique = set(), []
+        for d in data:
+            if d["job_id"] not in seen:
+                seen.add(d["job_id"])
+                unique.append(d)
         return unique
 
-    # ── Greenhouse ────────────────────────────────────────────────────────────
+    def _build_prompt(self, company: str, data: list[dict]) -> str:
+        summarized = [
+            {
+                "title": d.get("title", ""),
+                "department": d.get("department", ""),
+                "location": d.get("location", ""),
+                "keywords": d.get("keywords", []),
+                "platform": d.get("platform", ""),
+            }
+            for d in data[:60]
+        ]
+        return (
+            "You are a competitive intelligence analyst specializing in hiring signals. "
+            f"Here is jobs data for {company}: {summarized}. "
+            "What does this hiring pattern suggest about their strategic priorities, "
+            "new product areas, or organizational changes? Be specific. "
+            "Return a 2-4 sentence conclusion in plain text."
+        )
 
     async def _fetch_greenhouse(self, client: httpx.AsyncClient, company: str) -> list[dict]:
         try:
@@ -75,35 +78,24 @@ class JobsAgent(BaseAgent):
             resp.raise_for_status()
             jobs = resp.json().get("jobs", [])
         except httpx.HTTPError as e:
-            logger.info(f"[jobs] Greenhouse no board for '{company}': {e}")
+            logger.info(f"[jobs] greenhouse miss for {company}: {e}")
             return []
 
-        signals = []
+        out = []
         for job in jobs:
-            job_id = str(job["id"])
-            title = job.get("title", "")
-            dept = next((d["name"] for d in job.get("departments", [])), "Unknown")
-            location = next((loc["name"] for loc in job.get("offices", [])), "Remote")
+            job_id = f"greenhouse:{job['id']}"
             content_text = re.sub(r"<[^>]+>", " ", job.get("content", ""))
-            keywords = _classify_keywords(content_text)
-            signals.append({
-                "source_id": _stable_id("greenhouse", job_id),
-                "content": f"Job posting: {title} ({dept}) at {company}. Location: {location}. Signal keywords: {', '.join(keywords) or 'none'}.",
-                "metadata": {
-                    "platform": "greenhouse",
-                    "job_id": job_id,
-                    "title": title,
-                    "department": dept,
-                    "location": location,
-                    "keywords": keywords,
-                    "url": job.get("absolute_url", ""),
-                    "updated_at": job.get("updated_at", ""),
-                },
+            out.append({
+                "platform": "greenhouse",
+                "job_id": job_id,
+                "title": job.get("title", ""),
+                "department": next((d["name"] for d in job.get("departments", [])), "Unknown"),
+                "location": next((loc["name"] for loc in job.get("offices", [])), "Remote"),
+                "keywords": _classify_keywords(content_text),
+                "url": job.get("absolute_url", ""),
             })
-        logger.info(f"[jobs] Greenhouse: {len(signals)} jobs for '{company}'")
-        return signals
-
-    # ── Lever ─────────────────────────────────────────────────────────────────
+        logger.info(f"[jobs] greenhouse {len(out)} for {company}")
+        return out
 
     async def _fetch_lever(self, client: httpx.AsyncClient, company: str) -> list[dict]:
         try:
@@ -113,41 +105,27 @@ class JobsAgent(BaseAgent):
             if not isinstance(jobs, list):
                 return []
         except httpx.HTTPError as e:
-            logger.info(f"[jobs] Lever no board for '{company}': {e}")
+            logger.info(f"[jobs] lever miss for {company}: {e}")
             return []
 
-        signals = []
+        out = []
         for job in jobs:
-            job_id = job.get("id", "")
-            if not job_id:
+            jid = job.get("id", "")
+            if not jid:
                 continue
-            title = job.get("text", "")
-            dept = job.get("categories", {}).get("team", "Unknown")
-            location = job.get("categories", {}).get("location", "Remote")
-            description = job.get("descriptionPlain", "") or ""
-            keywords = _classify_keywords(description)
-            signals.append({
-                "source_id": _stable_id("lever", job_id),
-                "content": f"Job posting: {title} ({dept}) at {company}. Location: {location}. Signal keywords: {', '.join(keywords) or 'none'}.",
-                "metadata": {
-                    "platform": "lever",
-                    "job_id": job_id,
-                    "title": title,
-                    "department": dept,
-                    "location": location,
-                    "keywords": keywords,
-                    "url": job.get("hostedUrl", ""),
-                    "updated_at": str(job.get("createdAt", "")),
-                },
+            out.append({
+                "platform": "lever",
+                "job_id": f"lever:{jid}",
+                "title": job.get("text", ""),
+                "department": job.get("categories", {}).get("team", "Unknown"),
+                "location": job.get("categories", {}).get("location", "Remote"),
+                "keywords": _classify_keywords(job.get("descriptionPlain", "") or ""),
+                "url": job.get("hostedUrl", ""),
             })
-        logger.info(f"[jobs] Lever: {len(signals)} jobs for '{company}'")
-        return signals
-
-    # ── Workday ───────────────────────────────────────────────────────────────
+        logger.info(f"[jobs] lever {len(out)} for {company}")
+        return out
 
     async def _fetch_workday(self, client: httpx.AsyncClient, company: str) -> list[dict]:
-        # Workday tenants follow {tenant}.wd{N}.myworkdayjobs.com — try common patterns.
-        # The internal jobs API accepts a POST to /wday/cxs/{tenant}/{board}/jobs
         candidates = [
             (company, f"{company}-careers"),
             (company, f"{company}-jobs"),
@@ -155,47 +133,35 @@ class JobsAgent(BaseAgent):
             (company, "Careers"),
         ]
         suffixes = ["wd1", "wd3", "wd5"]
-
         for suffix in suffixes:
             for tenant, board in candidates:
                 url = f"https://{tenant}.{suffix}.myworkdayjobs.com/wday/cxs/{tenant}/{board}/jobs"
                 try:
                     resp = await client.post(url, json={}, timeout=8)
                     if resp.status_code == 200:
-                        data = resp.json()
-                        jobs = data.get("jobPostings", [])
+                        jobs = resp.json().get("jobPostings", [])
                         if jobs:
-                            return self._parse_workday_jobs(company, jobs, f"{tenant}.{suffix}.myworkdayjobs.com", board)
+                            return self._parse_workday(jobs, f"{tenant}.{suffix}.myworkdayjobs.com", board)
                 except (httpx.HTTPError, Exception):
                     continue
-
-        logger.info(f"[jobs] Workday: no board found for '{company}'")
         return []
 
-    def _parse_workday_jobs(self, company: str, jobs: list, host: str, board: str) -> list[dict]:
-        signals = []
+    def _parse_workday(self, jobs: list, host: str, board: str) -> list[dict]:
+        out = []
         for job in jobs[:50]:
             external_id = job.get("externalPath", job.get("bulletFields", [""])[0])
-            job_id = hashlib.md5(f"{host}:{external_id}".encode()).hexdigest()[:16]
+            jid = hashlib.md5(f"{host}:{external_id}".encode()).hexdigest()[:16]
             title = job.get("title", "")
-            location = ", ".join(job.get("locationsText", "").split(",")[:2])
-            keywords = _classify_keywords(title)
-            signals.append({
-                "source_id": _stable_id("workday", job_id),
-                "content": f"Job posting: {title} at {company}. Location: {location}. Signal keywords: {', '.join(keywords) or 'none'}.",
-                "metadata": {
-                    "platform": "workday",
-                    "job_id": job_id,
-                    "title": title,
-                    "location": location,
-                    "keywords": keywords,
-                    "url": f"https://{host}/en-US/{board}{external_id}",
-                },
+            out.append({
+                "platform": "workday",
+                "job_id": f"workday:{jid}",
+                "title": title,
+                "department": "Unknown",
+                "location": ", ".join(job.get("locationsText", "").split(",")[:2]),
+                "keywords": _classify_keywords(title),
+                "url": f"https://{host}/en-US/{board}{external_id}",
             })
-        logger.info(f"[jobs] Workday: {len(signals)} jobs for '{company}'")
-        return signals
-
-    # ── LinkedIn ──────────────────────────────────────────────────────────────
+        return out
 
     async def _fetch_linkedin(self, client: httpx.AsyncClient, company: str) -> list[dict]:
         url = f"https://www.linkedin.com/jobs/search/?keywords={company}&f_JT=F&position=1&pageNum=0"
@@ -204,43 +170,29 @@ class JobsAgent(BaseAgent):
             resp.raise_for_status()
             html = resp.text
         except httpx.HTTPError as e:
-            logger.info(f"[jobs] LinkedIn fetch failed for '{company}': {e}")
+            logger.info(f"[jobs] linkedin miss for {company}: {e}")
             return []
 
         soup = BeautifulSoup(html, "html.parser")
-        job_cards = soup.select("div.base-card")
-        if not job_cards:
-            # Try alternate selector used on some LinkedIn page variants
-            job_cards = soup.select("li.jobs-search__results-item")
-
-        signals = []
-        for card in job_cards[:30]:
+        cards = soup.select("div.base-card") or soup.select("li.jobs-search__results-item")
+        out = []
+        for card in cards[:30]:
             title_el = card.select_one("h3.base-search-card__title, h3.job-search-card__title")
-            company_el = card.select_one("h4.base-search-card__subtitle")
             location_el = card.select_one("span.job-search-card__location")
             link_el = card.select_one("a.base-card__full-link, a[data-tracking-control-name]")
-
             title = title_el.get_text(strip=True) if title_el else ""
-            location = location_el.get_text(strip=True) if location_el else ""
             job_url = link_el["href"].split("?")[0] if link_el and link_el.get("href") else ""
-
             if not title or not job_url:
                 continue
-
-            job_id = hashlib.md5(job_url.encode()).hexdigest()[:16]
-            keywords = _classify_keywords(title)
-            signals.append({
-                "source_id": _stable_id("linkedin", job_id),
-                "content": f"Job posting: {title} at {company}. Location: {location}. Signal keywords: {', '.join(keywords) or 'none'}.",
-                "metadata": {
-                    "platform": "linkedin",
-                    "job_id": job_id,
-                    "title": title,
-                    "location": location,
-                    "keywords": keywords,
-                    "url": job_url,
-                },
+            jid = hashlib.md5(job_url.encode()).hexdigest()[:16]
+            out.append({
+                "platform": "linkedin",
+                "job_id": f"linkedin:{jid}",
+                "title": title,
+                "department": "Unknown",
+                "location": location_el.get_text(strip=True) if location_el else "",
+                "keywords": _classify_keywords(title),
+                "url": job_url,
             })
-
-        logger.info(f"[jobs] LinkedIn: {len(signals)} jobs for '{company}'")
-        return signals
+        logger.info(f"[jobs] linkedin {len(out)} for {company}")
+        return out

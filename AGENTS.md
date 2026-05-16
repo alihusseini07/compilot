@@ -1,219 +1,222 @@
 # Compilot — Agent System Reference
 
-## Agent Architecture
+Compilot's analysis pipeline is a tiered cascade: **3 domain scraper agents** feed a
+**daily synthesis**, daily reports roll up into a **weekly synthesis**, and weekly
+reports roll up into a **monthly synthesis**. Every agent — scrapers and synthesizers
+— calls the LLM (Gemma 4 on Ollama). The orchestrator (`backend/agents/orchestrator.py`)
+is the single entry point and is invoked by the FastAPI `/analyze` endpoint or the
+three K8s CronJobs.
 
-All agents inherit from `BaseAgent` (`backend/agents/__init__.py`). The interface enforces:
-- `async def run(company: str) -> list[dict]` — main entry point
-- `async def _fetch(...)` — source-specific data retrieval (implemented per agent)
-- `async def _write_signals(signals: list[dict])` — writes to DB (implemented in base)
+```
+Orchestrator
+    ├── Jobs Agent          → scrapes job postings + new hires → LLM conclusion
+    ├── Research Agent      → scrapes news + PR + pricing diffs → LLM conclusion
+    └── Tech Agent          → scrapes GitHub commits + patents → LLM conclusion
+                ↓
+        Daily Synthesis Agent
+        (reasons across 3 agent conclusions → daily_reports row)
+                ↓
+        Weekly Synthesis Agent
+        (reasons across 7 daily reports → weekly_reports row)
+        (FALLBACK: if <7 daily reports, calls all 3 scrapers with last_7_days)
+                ↓
+        Monthly Synthesis Agent
+        (reasons across 4 weekly reports → monthly_reports row)
+        (FALLBACK: if <4 weekly reports, calls all 3 scrapers with last_30_days)
+```
 
-Claude Code rule: **never skip the base class**. If you add a new scraper, extend `BaseAgent`.
+---
+
+## Conclusion-Object Schema
+
+Every scraper agent's `run(company, date_range)` returns this shape. It is the
+universal carrier between scrapers and the synthesis tiers.
+
+```python
+{
+    "agent": "jobs",              # "jobs" | "research" | "tech"
+    "signal_count": 14,           # raw data points found pre-LLM
+    "conclusion": "...",          # 2-4 sentence LLM reasoning, plain text
+    "confidence": "high",         # "high" 10+ | "medium" 3-9 | "low" 1-2 | "none" 0
+    "date_range": "last_day",     # "last_day" | "last_7_days" | "last_30_days"
+    "error": None                 # error string if something failed, else None
+}
+```
+
+Confidence is derived purely from `signal_count` in `BaseAgent.reason()`. On
+exception, `error` is populated and `conclusion=""`.
+
+---
+
+## BaseAgent
+
+`backend/agents/base_agent.py`. All scrapers inherit it.
+
+Contract:
+- `agent_name: str` class attr (e.g. `"jobs"`).
+- `async _fetch(company, date_range) -> list[dict]` — pull raw data points.
+- `_build_prompt(company, data) -> str` — render the per-agent LLM prompt.
+- `async run(company, date_range="last_day") -> dict` — fetch + reason + wrap into a conclusion object. Do not override.
+- `reason(data, prompt, date_range) -> dict` — Ollama call helper.
+
+All LLM access goes through `BaseAgent.reason()`, which uses the single shared
+client in `backend/llm.py`. **Never instantiate a second `OpenAI(...)` client.**
 
 ---
 
 ## Scraper Agents
 
-### 1. GitHubAgent (`github_agent.py`)
+### 1. JobsAgent — `backend/agents/jobs_agent.py`
 
-**Data source:** GitHub REST API v3 + GraphQL API  
-**Libraries:** `httpx` (async HTTP), `python-dotenv`  
-**Schedule:** Every 6 hours (`0 */6 * * *`)
+Hiring signal aggregator. Tries Greenhouse → Lever → Workday → LinkedIn job
+search for the company, dedups by stable `job_id`, classifies postings against
+AI/enterprise/infra keyword sets, and asks the LLM what the hiring pattern
+suggests about strategic priorities, new product areas, or org changes.
 
-**What it fetches:**
-- New public repositories created by the target org in the last N days
-- Recent commits that touch `package.json`, `requirements.txt`, `go.mod`, `Cargo.toml`, `pyproject.toml`
-- Repository topic/tag changes (reveals product pivots)
+### 2. ResearchAgent — `backend/agents/research_agent.py`
 
-**What it writes to `signals`:**
-```json
-{
-  "company": "linear",
-  "source_type": "github",
-  "source_id": "commit:<sha>",
-  "content": "Commit abc123 touched requirements.txt: added 'openai>=1.0'",
-  "metadata": {
-    "repo": "linear/backend",
-    "sha": "abc123",
-    "diff_summary": "added openai>=1.0",
-    "file": "requirements.txt"
-  }
-}
-```
+News, PR, and pricing aggregator. Sources:
+- TechCrunch + VentureBeat RSS (filtered by company-name mention + cutoff date)
+- Hacker News Algolia search by company name (date-windowed)
+- Pricing-page snapshot (URL discovery + visible-text extract + tier detection)
 
-**Auth:** `GITHUB_TOKEN` env var (personal access token, read-only scope).
+The LLM is asked to filter out fluff (awards, HR announcements) and reason only
+about strategically significant items (product launches, partnerships,
+leadership changes, regulatory news, financial moves, pricing changes).
 
----
+### 3. TechAgent — `backend/agents/tech_agent.py`
 
-### 2. NewsAgent (`news_agent.py`)
+Technology signal aggregator. Sources:
+- GitHub org REST API: new public repos created in the window
+- GitHub commits in the window that touch dependency manifests (`package.json`,
+  `requirements.txt`, `go.mod`, `Cargo.toml`, `pyproject.toml`)
+- Lens.org patent search by assignee, filtered by `date_published >= cutoff`
 
-**Data source:** RSS feeds (TechCrunch, VentureBeat, Hacker News), NewsAPI  
-**Libraries:** `feedparser`, `httpx`, `python-dotenv`  
-**Schedule:** Every 2 hours (`0 */2 * * *`)
-
-**What it fetches:**
-- RSS entries mentioning the company name (case-insensitive)
-- NewsAPI top headlines filtered by company name query
-
-**What it writes to `signals`:**
-```json
-{
-  "company": "linear",
-  "source_type": "news",
-  "source_id": "news:<url-hash>",
-  "content": "Linear raises $35M Series B to expand project management platform",
-  "metadata": {
-    "url": "https://techcrunch.com/...",
-    "source": "TechCrunch",
-    "published_at": "2025-05-10T14:00:00Z"
-  }
-}
-```
+The LLM is asked what the company is building and what technical bets they're
+making.
 
 ---
 
-### 3. JobsAgent (`jobs_agent.py`)
+## Synthesis Agents
 
-**Data source:** Greenhouse API (public job boards), LinkedIn job search (scrape)  
-**Libraries:** `httpx`, `beautifulsoup4`, `python-dotenv`  
-**Schedule:** Daily at 8am UTC (`0 8 * * *`)
+### Daily — `backend/agents/daily_synthesis_agent.py`
 
-**What it fetches:**
-- Open job postings for the target company
-- Extracts: job title, department, tech keywords from description, location
+Input: list of 3 conclusion objects from the scrapers.
+Action: prompts the LLM for a JSON object `{report_text, key_insights}` using
+`response_format={"type": "json_object"}`. Writes one row to `daily_reports`
+with the parsed `report_text`, `key_insights` array, and an
+`overall_confidence` derived from the 3 input conclusions.
 
-**Signal insight:** Hiring for ML engineers + infra = platform expansion. Hiring for enterprise sales = GTM shift.
+### Weekly — `backend/agents/weekly_synthesis_agent.py`
 
-**What it writes to `signals`:**
-```json
-{
-  "company": "linear",
-  "source_type": "jobs",
-  "source_id": "job:<posting-id>",
-  "content": "New posting: Senior ML Engineer (Search & AI team) — requires PyTorch, RAG, vector DBs",
-  "metadata": {
-    "title": "Senior ML Engineer",
-    "department": "Search & AI",
-    "keywords": ["PyTorch", "RAG", "vector databases"],
-    "url": "https://boards.greenhouse.io/linear/jobs/..."
-  }
-}
-```
+Normal mode: queries the last 7 `daily_reports` rows for the company, reasons
+across them, writes a `weekly_reports` row with `fallback_used=false`.
 
----
+Fallback mode (fewer than 7 daily reports exist): calls JobsAgent +
+ResearchAgent + TechAgent with `date_range="last_7_days"`, synthesizes
+directly, writes the row with `fallback_used=true`. Logged clearly with
+`[weekly-synthesis] FALLBACK MODE for <company>`.
 
-### 4. PatentsAgent (`patents_agent.py`)
+### Monthly — `backend/agents/monthly_synthesis_agent.py`
 
-**Data source:** USPTO Patent Full-Text Database (PatentsView API), EPO Open Patent Services  
-**Libraries:** `httpx`, `python-dotenv`  
-**Schedule:** Weekly on Monday at 6am UTC (`0 6 * * 1`)
+Normal mode: queries the last 4 `weekly_reports` rows for the company, reasons
+across them, writes a `monthly_reports` row with `fallback_used=false`.
 
-**What it fetches:**
-- Patent applications and grants where assignee name matches the company
-- Extracts: patent title, abstract, filing date, CPC classification codes
-
-**What it writes to `signals`:**
-```json
-{
-  "company": "linear",
-  "source_type": "patents",
-  "source_id": "patent:US20250012345",
-  "content": "Patent filed: 'System and method for AI-assisted project prioritization using historical velocity data'",
-  "metadata": {
-    "patent_id": "US20250012345",
-    "filing_date": "2025-03-15",
-    "cpc_codes": ["G06F40/30", "G06N20/00"],
-    "abstract": "..."
-  }
-}
-```
+Fallback mode (fewer than 4 weekly reports exist): calls the 3 scrapers with
+`date_range="last_30_days"`, synthesizes directly, writes the row with
+`fallback_used=true`.
 
 ---
 
-### 5. PricingAgent (`pricing_agent.py`)
+## Orchestrator
 
-**Data source:** Competitor's public pricing page (HTML scrape + diff)  
-**Libraries:** `httpx`, `beautifulsoup4`, `python-dotenv`  
-**Schedule:** Daily at midnight UTC (`0 0 * * *`)
+`backend/agents/orchestrator.py` exposes a single coroutine:
 
-**What it fetches:**
-- Full text content of the pricing page
-- Diffs against last stored version to detect changes
-
-**What it writes to `signals`:**
-```json
-{
-  "company": "linear",
-  "source_type": "pricing",
-  "source_id": "pricing:<date>",
-  "content": "Pricing page changed: 'Plus' plan limit raised from 50 to unlimited members. New 'Enterprise AI' add-on added at $20/seat/mo.",
-  "metadata": {
-    "url": "https://linear.app/pricing",
-    "diff_summary": "Plus plan member limit removed; Enterprise AI add-on added",
-    "detected_at": "2025-05-14T00:05:00Z"
-  }
-}
+```python
+async def run(company: str, mode: str = "daily") -> dict
 ```
+
+- `mode="daily"` — runs the 3 scrapers in parallel with `asyncio.gather(return_exceptions=True)`, normalizes any raised exceptions into a conclusion object with `error` set, then calls `DailySynthesisAgent`.
+- `mode="weekly"` — delegates to `WeeklySynthesisAgent` (which owns its own normal/fallback branch).
+- `mode="monthly"` — delegates to `MonthlySynthesisAgent`.
+
+**Failure isolation**: any scraper that raises is caught by `asyncio.gather`;
+the daily synthesis still runs with whatever conclusions did succeed. Logs are
+emitted at every step (`[orchestrator] start … mode=…`, `[<agent>] start …`,
+`[<agent>] done …`) so the K8s log tail is readable during a demo.
 
 ---
 
-## Synthesis Agent (`synthesis_agent.py`)
+## API Surface
 
-**Schedule:** Nightly at midnight UTC (`0 0 * * *`)  
-**Model:** Gemma 4 8B — Ollama model tag `gemma4:e4b`, ~9.6 GB. Chosen over 26B for speed on `vc2-4c-16gb` (16GB RAM). Requires `ollama pull gemma4:e4b` on the inference VM before deploying.  
-**Inference server:** Ollama on a dedicated Vultr AMD High Performance VM (4 vCPU, 12 GB RAM), separate from the K8s cluster but on the same Vultr VPC. IP stored in `OLLAMA_HOST` K8s secret. Exposes an OpenAI-compatible endpoint at `http://<OLLAMA_HOST>:11434/v1`.  
-**Client:** `openai.OpenAI(base_url=f"http://{OLLAMA_HOST}:11434/v1", api_key="ollama")` — Ollama does not require a real API key.  
-**All LLM calls are contained in `synthesis_agent.py` — never instantiate the Ollama client elsewhere.**
+New canonical endpoints (served by `backend/api/routes.py`):
 
-### API Call Parameters
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/analyze/{company}?mode=daily\|weekly\|monthly` | Enqueue Celery `analyze_company_task`, returns `job_id`. |
+| GET  | `/reports/{company}/daily?limit=30` | Last N daily reports. |
+| GET  | `/reports/{company}/weekly?limit=12` | Last N weekly reports. |
+| GET  | `/reports/{company}/monthly?limit=12` | Last N monthly reports. |
+| GET  | `/reports/{company}/latest` | `{daily, weekly, monthly}` — most recent of each. |
 
-- `temperature=0.2` — low temperature for deterministic structured reasoning, not creative generation
-- `response_format={"type": "json_object"}` — forces Ollama to return valid JSON
-- `max_tokens=4096`
+Legacy endpoints kept alive for the existing frontend (will return empty
+collections since new scrapers no longer write to `signals` and the synthesis
+tiers don't write to `inferences`):
 
-### Prompt Structure
+| Method | Path | Behavior |
+|--------|------|----------|
+| POST | `/api/run-scrape` | Re-wired → `analyze_company_task(company, "daily")` |
+| POST | `/api/synthesize` | Re-wired → `analyze_company_task(company, "daily")` |
+| GET  | `/api/signals/{company}` | Reads `signals` table (legacy, expected empty) |
+| GET  | `/api/inferences/{company}` | Reads `inferences` table (legacy, expected empty) |
+| GET  | `/api/health` | Liveness/readiness |
 
-The system prompt instructs the model to respond **only** with a JSON object matching the schema below. No markdown, no prose outside the JSON.
+---
 
-```
-System:
-You are a competitive intelligence analyst. Respond ONLY with a valid JSON object with key
-"inferences" containing an array. Each element must match the inference schema exactly.
+## Database
 
-User:
-Company: {company_name}
-Analysis window: {start_date} to {end_date}
+Existing tables `signals` and `inferences` are preserved but no longer written
+to by the new pipeline. Three new tables hold all output:
 
-Signals (JSON array):
-{signals_json}
+- `daily_reports(id, company, report_date, report_text, key_insights JSONB, overall_confidence, created_at)`
+- `weekly_reports(id, company, week_start, report_text, fallback_used BOOLEAN, created_at)`
+- `monthly_reports(id, company, month_start, report_text, fallback_used BOOLEAN, created_at)`
 
-Produce a JSON object {"inferences": [...]} of strategic inferences.
-Return {"inferences": []} if no meaningful inferences can be drawn.
-```
+All three are indexed on `(company, <date>)`. DDL lives in
+`backend/db/schema.sql`; SQLAlchemy models in `backend/db/models.py`.
 
-### Expected Response Schema
+---
 
-```json
-[
-  {
-    "inference": "Linear is building an AI-native project management layer, likely to launch within 2 quarters.",
-    "confidence": "high",
-    "reasoning": "Three ML engineer postings (Search & AI team), a patent on AI-assisted prioritization, and a new openai dependency in their backend repo all point to a coordinated AI feature push.",
-    "supporting_signal_ids": [42, 87, 103],
-    "category": "product"
-  }
-]
-```
+## Celery + Kubernetes
 
-### Confidence Score Assignment
+`backend/tasks.py` exposes one canonical task: `analyze_company_task(company, mode)`.
+The legacy task names `run_all_scrapers_task` and `run_synthesis_task` remain
+as shims that call `analyze_company_task(company, "daily")` so the existing
+frontend stays functional.
 
-The model is instructed to assign confidence based on signal corroboration:
-- **high** — 3+ independent signal sources agree on same strategic direction
-- **medium** — 2 sources agree, or 1 strong source (e.g., patent filing)
-- **low** — single weak signal (e.g., one job posting), speculative
+K8s CronJobs (each `kubectl apply -f k8s/<name>.yaml`):
 
-### Inference Categories
+| Manifest | Schedule | Mode |
+|----------|----------|------|
+| `k8s/daily-cronjob.yaml`   | `0 0 * * *`  | daily   |
+| `k8s/weekly-cronjob.yaml`  | `0 0 * * 1`  | weekly  |
+| `k8s/monthly-cronjob.yaml` | `0 0 1 * *`  | monthly |
 
-`product` | `gtm` | `hiring` | `funding` | `technical` | `regulatory`
+All three iterate over `TRACKED_COMPANIES` (comma-separated env), call
+`agents.orchestrator.run(company, mode)`, and use the same `compilot-secrets`
+secret refs as the old scrapers (`OLLAMA_HOST`, `DATABASE_URL`, `REDIS_URL`,
+`OLLAMA_MODEL`, plus optional `GITHUB_TOKEN`, `LENS_API_TOKEN`).
+
+---
+
+## Claude Code Working Rules
+
+1. **All LLM access goes through `BaseAgent.reason()` or the synthesis agents' helpers**, each importing `client` from `backend/llm.py`. Never instantiate a second Ollama client.
+2. **All DB writes use the SQLAlchemy models in `backend/db/models.py`**. No raw SQL strings.
+3. **Scraper failures must be isolated.** Use `asyncio.gather(return_exceptions=True)` whenever fanning out, and normalize exceptions into conclusion objects with `error` set.
+4. **No secrets in agent code.** Read from `os.environ` — never hardcode.
+5. **Never commit code yourself.** Stage changes and present them — let the user commit.
+6. **CLAUDE.md and AGENTS.md stay in sync.** Edits to one must be mirrored in the other in the same session.
 
 ---
 
@@ -232,22 +235,10 @@ The model is instructed to assign confidence based on signal corroboration:
 - Apply manifests: `kubectl apply -f k8s/`
 - Key commands:
   ```bash
-  kubectl get all                          # cluster overview
-  kubectl logs -f deployment/compilot-backend  # backend logs
-  kubectl logs -f deployment/compilot-celery-worker  # worker logs
-  kubectl get cronjobs                     # scraper schedules
-  kubectl create job --from=cronjob/<name> <job-name>  # trigger scraper manually
+  kubectl get all                                       # cluster overview
+  kubectl logs -f deployment/compilot-backend           # backend logs
+  kubectl logs -f deployment/compilot-celery-worker     # worker logs
+  kubectl get cronjobs                                  # schedules
+  kubectl create job --from=cronjob/compilot-daily manual-daily-$(date +%s)
   ```
-- **Secrets** are in K8s Secret `compilot-secrets` — never read from `.env` in prod
-- Two known failing jobs as of 2026-05-16: `pricing-scraper`, `synthesis-agent` — investigate before running
-
-## Claude Code Working Rules for Agents
-
-1. **Maintain BaseAgent interface.** Every scraper must implement `async def run(company: str) -> list[dict]` and call `await self._write_signals(signals)`.
-2. **Never call the LLM outside `synthesis_agent.py`.** The Ollama client is instantiated there. `backend/llm.py` is a shared factory — do not add a second client instantiation elsewhere.
-3. **Scrapers must be idempotent.** Every signal must have a stable `source_id`. Use `INSERT ... ON CONFLICT (source_id) DO NOTHING`.
-4. **No secrets in agent code.** Read from `os.environ` or the Settings object — never hardcode tokens, URLs, or credentials.
-5. **Keep scraper logic in `_fetch()`, DB logic in `_write_signals()`.** Don't mix concerns in `run()`.
-6. **Catch and log HTTP errors per signal, don't abort the whole run.** One bad URL shouldn't kill the batch.
-7. **Never commit code yourself.** Stage changes and present them — let the user commit.
-8. **CLAUDE.md and AGENTS.md stay in sync.** Any edit made to one must be mirrored in the other in the same session.
+- Secrets live in K8s Secret `compilot-secrets` — never read from `.env` in prod.

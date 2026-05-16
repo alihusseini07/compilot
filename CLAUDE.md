@@ -16,20 +16,48 @@ Cross-signal AI that monitors competitors across public data sources and infers 
 
 ## How the Agent System Works
 
-Five scraper agents run as Kubernetes CronJobs in parallel on their own schedules:
+Compilot uses a tiered pipeline: 3 domain scraper agents each reason over their
+own data with the LLM, then 3 synthesis tiers (daily → weekly → monthly) roll
+those conclusions into successively higher-level reports. The orchestrator
+(`backend/agents/orchestrator.py`) is the single entry point.
 
-1. **GitHubAgent** — polls GitHub API for new repos, commits to dependency files (`package.json`, `requirements.txt`, `go.mod`), and repo topic changes for a target org.
-2. **NewsAgent** — fetches RSS feeds and crawls tech news APIs (NewsAPI, Google News RSS) for mentions of the competitor.
-3. **JobsAgent** — scrapes job postings from LinkedIn and Greenhouse to detect hiring signals (new teams, tech keywords in JDs).
-4. **PatentsAgent** — queries the USPTO/EPO public APIs for new patent filings by the competitor.
-5. **PricingAgent** — fetches and diffs the competitor's pricing page to detect tier changes, new plans, or removed features.
+```
+Orchestrator
+    ├── Jobs Agent       → scrapes job postings + new hires → LLM conclusion
+    ├── Research Agent   → scrapes news + PR + pricing diffs → LLM conclusion
+    └── Tech Agent       → scrapes GitHub + patents → LLM conclusion
+                ↓
+        Daily Synthesis Agent   → daily_reports row
+                ↓
+        Weekly Synthesis Agent  → weekly_reports row
+        (FALLBACK to direct-scrape last_7_days if <7 daily reports)
+                ↓
+        Monthly Synthesis Agent → monthly_reports row
+        (FALLBACK to direct-scrape last_30_days if <4 weekly reports)
+```
 
-Each scraper writes raw signal rows to the `signals` table in Postgres. Signals are idempotent — each has a `source_id` unique key so re-runs don't duplicate data.
+Each scraper agent inherits `BaseAgent` (`backend/agents/base_agent.py`),
+implements `_fetch(company, date_range)` and `_build_prompt(company, data)`,
+and returns a uniform **conclusion object**:
 
-A **SynthesisAgent** runs nightly at 00:00 UTC. It:
-1. Pulls all signals for each tracked company from the last N days.
-2. Calls Gemma 4 8B (`gemma4:e4b`) via the Ollama instance on a dedicated Vultr VM (`OLLAMA_HOST`) using the `openai` SDK pointed at `http://<OLLAMA_HOST>:11434/v1`. The Ollama VM is on the same Vultr private network (VPC) as the K8s cluster for low-latency calls.
-3. Writes inference rows to the `inferences` table with confidence scores (high/medium/low) and the IDs of signals that support each inference.
+```python
+{"agent", "signal_count", "conclusion", "confidence", "date_range", "error"}
+```
+
+Confidence is bucketed off signal count (10+ high, 3-9 medium, 1-2 low, 0 none).
+The orchestrator catches per-scraper exceptions with
+`asyncio.gather(return_exceptions=True)` so one bad source does not abort the
+daily synthesis.
+
+The synthesis tiers each persist to their own table — `daily_reports`,
+`weekly_reports`, `monthly_reports`. Weekly/Monthly fall back to direct scrape
+when lower-tier history is missing; the row is flagged with
+`fallback_used=true`. All LLM calls go through Gemma 4 (`OLLAMA_MODEL` env, default `gemma4:e4b`) via the
+`openai` SDK pointed at the Ollama VM on the same Vultr VPC (`OLLAMA_HOST`).
+The shared client is `backend/llm.py`; **never instantiate a second one**.
+
+The old `signals` and `inferences` tables are preserved but no longer written
+to by the new pipeline.
 
 ## Folder Structure
 
@@ -41,21 +69,25 @@ compilot/
 ├── .env.example           # Environment variable template
 ├── backend/
 │   ├── main.py            # FastAPI app entrypoint
+│   ├── tasks.py           # Celery: analyze_company_task + legacy shims
+│   ├── llm.py             # Shared Ollama client factory (only instantiation)
 │   ├── requirements.txt   # Python dependencies
 │   ├── agents/
 │   │   ├── __init__.py
-│   │   ├── github_agent.py    # GitHub API scraper
-│   │   ├── news_agent.py      # RSS/news API scraper
-│   │   ├── jobs_agent.py      # Job posting scraper
-│   │   ├── patents_agent.py   # Patent filing scraper
-│   │   ├── pricing_agent.py   # Pricing page diff scraper
-│   │   └── synthesis_agent.py # Gemma 4 26B reasoning agent (via Ollama)
+│   │   ├── base_agent.py             # BaseAgent + reason() LLM helper
+│   │   ├── jobs_agent.py             # Greenhouse/Lever/Workday/LinkedIn
+│   │   ├── research_agent.py         # RSS + HN + pricing diff
+│   │   ├── tech_agent.py             # GitHub + Lens.org patents
+│   │   ├── daily_synthesis_agent.py  # 3 conclusions → daily_reports
+│   │   ├── weekly_synthesis_agent.py # 7 daily (or fallback) → weekly_reports
+│   │   ├── monthly_synthesis_agent.py# 4 weekly (or fallback) → monthly_reports
+│   │   └── orchestrator.py           # run(company, mode) entry point
 │   ├── api/
 │   │   ├── __init__.py
-│   │   └── routes.py          # FastAPI route definitions
+│   │   └── routes.py          # New /analyze + /reports + legacy /api/* shims
 │   └── db/
 │       ├── __init__.py
-│       ├── models.py          # SQLAlchemy ORM models
+│       ├── models.py          # SQLAlchemy ORM models (incl. *Report tables)
 │       └── schema.sql         # Raw DDL for reference / migrations
 ├── frontend/
 │   ├── package.json
@@ -64,16 +96,17 @@ compilot/
 │       ├── main.jsx
 │       ├── App.jsx
 │       └── components/
-│           ├── RadarDashboard.jsx  # Main radar/timeline view
+│           ├── RadarDashboard.jsx  # Main radar/timeline view (legacy data path)
 │           ├── SignalFeed.jsx      # Raw signal stream panel
-│           └── InferenceCard.jsx  # Single inference display card
+│           └── InferenceCard.jsx   # Single inference display card
 └── k8s/
     ├── backend-deployment.yaml
     ├── frontend-deployment.yaml
-    ├── synthesis-cronjob.yaml
-    ├── github-scraper-cronjob.yaml
-    ├── news-scraper-cronjob.yaml
-    └── configmap.yaml
+    ├── celery-worker-deployment.yaml
+    ├── configmap.yaml
+    ├── daily-cronjob.yaml     # orchestrator daily @ 00:00 UTC
+    ├── weekly-cronjob.yaml    # orchestrator weekly @ Mon 00:00 UTC
+    └── monthly-cronjob.yaml   # orchestrator monthly @ 1st 00:00 UTC
 ```
 
 ## Environments
@@ -102,20 +135,19 @@ compilot/
 
 ## Key Conventions
 
-- **All agents inherit from `BaseAgent`** defined in `backend/agents/__init__.py`. Never bypass this interface.
+- **All scraper agents inherit from `BaseAgent`** defined in `backend/agents/base_agent.py`. Never bypass this interface.
 - **All DB access goes through SQLAlchemy models** in `backend/db/models.py`. No raw SQL strings in agent code.
-- **All LLM inference is contained in `backend/agents/synthesis_agent.py`**, which instantiates the `openai.OpenAI` client pointed at the Ollama host directly. `backend/llm.py` exists as a shared client factory for future use. Never add a second Ollama client instantiation elsewhere.
+- **All LLM inference goes through `BaseAgent.reason()` or the synthesis agents' helpers**, each importing `client` from `backend/llm.py`. That file is the **only** Ollama client instantiation. Never add a second one.
 - **Never hardcode environment variables.** All secrets and config are loaded via `python-dotenv` from `.env` (local) or K8s Secrets (production).
-- **Scrapers must be idempotent.** Use `INSERT ... ON CONFLICT DO NOTHING` on `source_id` to prevent duplicate signals.
+- **Scraper failures must be isolated.** Use `asyncio.gather(return_exceptions=True)` and normalize exceptions into conclusion objects with `error` populated.
 - **Never commit code yourself.** Stage changes and present them — let the user commit.
 - **CLAUDE.md and AGENTS.md stay in sync.** Any edit made to one must be mirrored in the other in the same session.
 
 ## Demo Flow
 
 1. User enters a competitor company name (e.g., `"Linear"`) in the frontend.
-2. Frontend calls `POST /api/run-scrape` → backend triggers all 5 scraper agents via Celery tasks.
-3. Scrapers run in parallel, writing signals to Postgres.
-4. Frontend calls `POST /api/synthesize` → backend triggers `SynthesisAgent`.
-5. `SynthesisAgent` calls Gemma 4 26B via Ollama, writes inferences to Postgres.
-6. Frontend polls `GET /api/inferences/{company}` and `GET /api/signals/{company}`.
-7. Dashboard renders radar view (Recharts RadarChart) + signal timeline + inference cards.
+2. Frontend calls `POST /api/run-scrape` (legacy compat shim) → backend enqueues `analyze_company_task(company, "daily")`.
+3. Celery worker runs `orchestrator.run(company, "daily")`: 3 scraper agents fan out via `asyncio.gather`, each making its own LLM call and returning a conclusion object.
+4. `DailySynthesisAgent` consumes the 3 conclusions, calls Gemma 4 once more, writes a row to `daily_reports`.
+5. Frontend GETs `/reports/{company}/latest` (new) or the legacy `/api/signals`/`/api/inferences` endpoints (which now return empty collections — frontend will need an update to consume `/reports/*`).
+6. Weekly + Monthly tiers run on their own CronJobs (Mon midnight + 1st of month midnight) and produce `weekly_reports` / `monthly_reports` rows, with fallback paths that re-run the scrapers over a wider window if upstream history is sparse.

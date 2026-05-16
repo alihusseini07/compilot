@@ -36,3 +36,40 @@ CREATE TABLE IF NOT EXISTS inferences (
 CREATE INDEX IF NOT EXISTS idx_inferences_company ON inferences (company);
 CREATE INDEX IF NOT EXISTS idx_inferences_confidence ON inferences (company, confidence);
 CREATE INDEX IF NOT EXISTS idx_inferences_synthesized_at ON inferences (synthesized_at DESC);
+
+-- Daily intelligence reports (DailySynthesisAgent output)
+CREATE TABLE IF NOT EXISTS daily_reports (
+    id                 SERIAL PRIMARY KEY,
+    company            TEXT NOT NULL,
+    report_date        DATE NOT NULL,
+    report_text        TEXT NOT NULL,
+    key_insights       JSONB,
+    overall_confidence TEXT,
+    created_at         TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_reports_company_date ON daily_reports (company, report_date DESC);
+
+-- Weekly intelligence reports (WeeklySynthesisAgent output)
+CREATE TABLE IF NOT EXISTS weekly_reports (
+    id            SERIAL PRIMARY KEY,
+    company       TEXT NOT NULL,
+    week_start    DATE NOT NULL,
+    report_text   TEXT NOT NULL,
+    fallback_used BOOLEAN DEFAULT FALSE,
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_weekly_reports_company_week ON weekly_reports (company, week_start DESC);
+
+-- Monthly intelligence reports (MonthlySynthesisAgent output)
+CREATE TABLE IF NOT EXISTS monthly_reports (
+    id            SERIAL PRIMARY KEY,
+    company       TEXT NOT NULL,
+    month_start   DATE NOT NULL,
+    report_text   TEXT NOT NULL,
+    fallback_used BOOLEAN DEFAULT FALSE,
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_monthly_reports_company_month ON monthly_reports (company, month_start DESC);
