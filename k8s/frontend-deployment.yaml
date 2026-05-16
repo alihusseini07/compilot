@@ -18,6 +18,7 @@ spec:
       containers:
         - name: frontend
           image: ahusseini07/compilot-frontend:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
           resources:

@@ -1,156 +1,209 @@
-import { useState, useCallback } from "react";
-import RadarDashboard from "./components/RadarDashboard.jsx";
-import SignalFeed from "./components/SignalFeed.jsx";
-import InferenceCard from "./components/InferenceCard.jsx";
+import { useState, useRef } from "react";
+import ReportCard from "./components/ReportCard";
+import HistoryList from "./components/HistoryList";
+import "./index.css";
 
-const API = "/api";
+const TABS = ["daily", "weekly", "monthly"];
+const HISTORY_LIMITS = { daily: 7, weekly: 4, monthly: 3 };
+const POLL_INTERVAL = 5000;
+const POLL_TIMEOUT = 180000;
+
+const STATUS_STEPS = [
+  "Queuing analysis…",
+  "Running jobs, research & tech agents…",
+  "Agents scraping data sources…",
+  "Calling LLM for domain conclusions…",
+  "Daily synthesis agent reasoning…",
+  "Writing report to database…",
+];
+
+async function fetchLatest(company) {
+  const res = await fetch(`/reports/${encodeURIComponent(company)}/latest`);
+  if (!res.ok) throw new Error("fetch latest failed");
+  return res.json();
+}
+
+async function fetchHistory(company, type) {
+  const limit = HISTORY_LIMITS[type];
+  const res = await fetch(`/reports/${encodeURIComponent(company)}/${type}?limit=${limit}`);
+  if (!res.ok) throw new Error(`fetch ${type} history failed`);
+  const data = await res.json();
+  return data.reports || [];
+}
 
 export default function App() {
   const [company, setCompany] = useState("");
-  const [submittedCompany, setSubmittedCompany] = useState(null);
-  const [signals, setSignals] = useState([]);
-  const [inferences, setInferences] = useState([]);
-  const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState("daily");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [statusStep, setStatusStep] = useState(0);
+  const [latestReports, setLatestReports] = useState({ daily: null, weekly: null, monthly: null });
+  const [history, setHistory] = useState({ daily: [], weekly: [], monthly: [] });
+  const [loadedTabs, setLoadedTabs] = useState({ daily: false, weekly: false, monthly: false });
+  const [error, setError] = useState(null);
+  const pollRef = useRef(null);
+  const stepRef = useRef(null);
 
-  const runPipeline = useCallback(async () => {
-    if (!company.trim()) return;
-    setLoading(true);
-    setStatus("Running scrapers...");
+  const slug = company.trim().toLowerCase();
 
-    const slug = company.toLowerCase();
+  function dropFirst(arr, latest) {
+    return arr.filter(r => !latest || r.id !== latest.id);
+  }
+
+  async function loadAll(co) {
+    const [latest, dailyH, weeklyH, monthlyH] = await Promise.all([
+      fetchLatest(co),
+      fetchHistory(co, "daily"),
+      fetchHistory(co, "weekly"),
+      fetchHistory(co, "monthly"),
+    ]);
+    setLatestReports({ daily: latest.daily, weekly: latest.weekly, monthly: latest.monthly });
+    setHistory({
+      daily: dropFirst(dailyH, latest.daily),
+      weekly: dropFirst(weeklyH, latest.weekly),
+      monthly: dropFirst(monthlyH, latest.monthly),
+    });
+    setLoadedTabs({ daily: true, weekly: true, monthly: true });
+  }
+
+  async function handleTabSwitch(tab) {
+    setActiveTab(tab);
+    if (loadedTabs[tab] || !slug) return;
+    try {
+      const [latest, hist] = await Promise.all([
+        fetchLatest(slug),
+        fetchHistory(slug, tab),
+      ]);
+      setLatestReports(prev => ({ ...prev, [tab]: latest[tab] }));
+      setHistory(prev => ({
+        ...prev,
+        [tab]: dropFirst(hist, latest[tab]),
+      }));
+      setLoadedTabs(prev => ({ ...prev, [tab]: true }));
+    } catch { /* silent */ }
+  }
+
+  async function handleAnalyze() {
+    if (!slug || analyzing) return;
+    setError(null);
+    setAnalyzing(true);
+    setStatusStep(0);
+
+    const preClickTime = Date.now();
+
+    let step = 0;
+    stepRef.current = setInterval(() => {
+      step = Math.min(step + 1, STATUS_STEPS.length - 1);
+      setStatusStep(step);
+    }, 18000);
 
     try {
-      await fetch(`${API}/run-scrape`, {
+      const res = await fetch(`/analyze/${encodeURIComponent(slug)}?mode=daily`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company: slug }),
+      });
+      if (!res.ok) throw new Error(`Analyze request failed (${res.status})`);
+
+      await new Promise((resolve, reject) => {
+        const deadline = Date.now() + POLL_TIMEOUT;
+        pollRef.current = setInterval(async () => {
+          if (Date.now() > deadline) {
+            clearInterval(pollRef.current);
+            reject(new Error("Timed out waiting for report — worker may still be running"));
+            return;
+          }
+          try {
+            const data = await fetchLatest(slug);
+            if (data.daily && new Date(data.daily.created_at).getTime() > preClickTime) {
+              clearInterval(pollRef.current);
+              resolve();
+            }
+          } catch { /* keep polling */ }
+        }, POLL_INTERVAL);
       });
 
-      // Poll until signals appear or 90s timeout
-      setStatus("Scraping signals… (this takes ~30–60s)");
-      let signals = [];
-      const deadline = Date.now() + 90_000;
-      while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 4000));
-        const resp = await fetch(`${API}/signals/${slug}`);
-        const data = await resp.json();
-        signals = data.signals || [];
-        if (signals.length > 0) break;
-        setStatus(`Scraping signals… (${signals.length} so far)`);
-      }
-
-      setSignals(signals);
-      setSubmittedCompany(company);
-
-      if (signals.length === 0) {
-        setStatus("No signals found. Check worker logs.");
-        setLoading(false);
-        return;
-      }
-
-      setStatus(`Got ${signals.length} signals. Synthesizing inferences…`);
-      await fetch(`${API}/synthesize`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company: slug }),
-      });
-
-      // Poll for inferences (synthesis takes longer — Ollama call)
-      let inferences = [];
-      const infDeadline = Date.now() + 600_000;
-      while (Date.now() < infDeadline) {
-        await new Promise((r) => setTimeout(r, 5000));
-        const resp = await fetch(`${API}/inferences/${slug}`);
-        const data = await resp.json();
-        inferences = data.inferences || [];
-        if (inferences.length > 0) break;
-        setStatus(`Synthesizing… (waiting for Ollama)`);
-      }
-
-      setInferences(inferences);
-      setStatus(inferences.length > 0 ? "Done." : `Done. ${signals.length} signals collected. Synthesis timed out — inferences may still be processing.`);
-    } catch (err) {
-      setStatus(`Error: ${err.message}`);
+      await loadAll(slug);
+    } catch (e) {
+      setError(e.message);
     } finally {
-      setLoading(false);
+      clearInterval(stepRef.current);
+      setAnalyzing(false);
     }
-  }, [company]);
+  }
+
+  const currentLatest = latestReports[activeTab];
+  const currentHistory = history[activeTab];
+  const hasAny = currentLatest || (currentHistory && currentHistory.length > 0);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0f172a", color: "#e2e8f0", fontFamily: "Inter, sans-serif", padding: "2rem" }}>
-      <header style={{ marginBottom: "2rem" }}>
-        <h1 style={{ fontSize: "1.75rem", fontWeight: 700, color: "#f8fafc", marginBottom: "0.25rem" }}>
-          Compilot
-        </h1>
-        <p style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
-          Competitive intelligence radar — infer strategy before it's announced.
-        </p>
+    <div className="app">
+      <header className="header">
+        <div className="header-logo">C</div>
+        <h1>Compilot</h1>
+        <p>Competitive Intelligence Radar</p>
       </header>
 
-      <div style={{ display: "flex", gap: "0.75rem", marginBottom: "2rem" }}>
+      <div className="input-row">
         <input
+          className="company-input"
           type="text"
-          placeholder="Enter competitor name (e.g. linear)"
+          placeholder="Company name (e.g. linear, notion, figma)"
           value={company}
-          onChange={(e) => setCompany(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && runPipeline()}
-          style={{
-            flex: 1,
-            padding: "0.6rem 1rem",
-            borderRadius: "8px",
-            border: "1px solid #334155",
-            background: "#1e293b",
-            color: "#f8fafc",
-            fontSize: "0.95rem",
-          }}
+          onChange={e => setCompany(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleAnalyze()}
+          disabled={analyzing}
         />
         <button
-          onClick={runPipeline}
-          disabled={loading || !company.trim()}
-          style={{
-            padding: "0.6rem 1.5rem",
-            borderRadius: "8px",
-            background: loading ? "#334155" : "#6366f1",
-            color: "#fff",
-            border: "none",
-            cursor: loading ? "not-allowed" : "pointer",
-            fontWeight: 600,
-          }}
+          className="analyze-btn"
+          onClick={handleAnalyze}
+          disabled={!slug || analyzing}
         >
-          {loading ? "Running..." : "Analyze"}
+          {analyzing && <span className="spinner" />}
+          {analyzing ? "Analyzing…" : "Analyze"}
         </button>
       </div>
 
-      {status && (
-        <p style={{ color: "#64748b", marginBottom: "1.5rem", fontSize: "0.85rem" }}>{status}</p>
+      {analyzing && (
+        <div className="status-bar">
+          <span className="spinner" />
+          {STATUS_STEPS[statusStep]}
+        </div>
       )}
 
-      {submittedCompany && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
-          <div>
-            <h2 style={{ fontSize: "1rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "1rem" }}>
-              Signal Radar — {submittedCompany}
-            </h2>
-            <RadarDashboard signals={signals} />
-            <h2 style={{ fontSize: "1rem", fontWeight: 600, color: "#cbd5e1", margin: "1.5rem 0 1rem" }}>
-              Raw Signals
-            </h2>
-            <SignalFeed signals={signals} />
-          </div>
-
-          <div>
-            <h2 style={{ fontSize: "1rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "1rem" }}>
-              AI Inferences ({inferences.length})
-            </h2>
-            {inferences.map((inf) => (
-              <InferenceCard key={inf.id} inference={inf} signals={signals} />
-            ))}
-            {inferences.length === 0 && (
-              <p style={{ color: "#475569", fontSize: "0.85rem" }}>No inferences yet. Run analysis first.</p>
-            )}
-          </div>
+      {error && (
+        <div className="status-bar" style={{ borderColor: "#f9731630", color: "#fb923c" }}>
+          ⚠ {error}
         </div>
+      )}
+
+      <nav className="tabs">
+        {TABS.map(tab => (
+          <button
+            key={tab}
+            className={`tab-btn${activeTab === tab ? " active" : ""}`}
+            onClick={() => handleTabSwitch(tab)}
+          >
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
+      </nav>
+
+      {!slug ? (
+        <div className="empty-state">
+          <div style={{ fontSize: 32, marginBottom: 8 }}>⬆</div>
+          <p>Enter a company name above to start.</p>
+        </div>
+      ) : !hasAny && !analyzing ? (
+        <div className="empty-state">
+          <div style={{ fontSize: 32, marginBottom: 8 }}>◎</div>
+          <p>No {activeTab} report yet for <strong>{slug}</strong>.</p>
+          <p style={{ marginTop: 6 }}>Click Analyze to generate one.</p>
+        </div>
+      ) : (
+        <>
+          {currentLatest && (
+            <ReportCard report={currentLatest} type={activeTab} isLatest />
+          )}
+          <HistoryList reports={currentHistory} type={activeTab} />
+        </>
       )}
     </div>
   );

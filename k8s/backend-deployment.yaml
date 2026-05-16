@@ -18,6 +18,7 @@ spec:
       containers:
         - name: backend
           image: ahusseini07/compilot-backend:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           envFrom:

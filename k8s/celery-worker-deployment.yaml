@@ -18,6 +18,7 @@ spec:
       containers:
         - name: worker
           image: ahusseini07/compilot-backend:latest
+          imagePullPolicy: Always
           command: ["celery", "-A", "tasks.celery_app", "worker", "--loglevel=info"]
           envFrom:
             - configMapRef:
