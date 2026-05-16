@@ -9,7 +9,7 @@ Cross-signal AI that monitors competitors across public data sources and infers 
 | Backend runtime | Python 3.12, FastAPI, Uvicorn |
 | Task queue | Celery + Redis |
 | Database | PostgreSQL 16 (async via asyncpg + SQLAlchemy 2.0) |
-| AI inference | Gemma 4 8B (`gemma4:e4b` Ollama tag, ~9.6 GB) on a dedicated Vultr `vc2-4c-16gb` VM running Ollama — OpenAI-compatible API, `openai` Python SDK |
+| AI inference | Gemma 4 8B (`gemma4:e4b` Ollama tag, ~9.6 GB) on a dedicated Vultr AMD High Performance VM (4 vCPU, 12 GB RAM) running Ollama — OpenAI-compatible API, `openai` Python SDK |
 | Frontend | React 18 + Vite 5, Recharts |
 | Containerization | Docker, Docker Compose (local dev) |
 | Orchestration | Kubernetes on Vultr Kubernetes Engine (VKE) |

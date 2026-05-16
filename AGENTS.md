@@ -160,7 +160,7 @@ Claude Code rule: **never skip the base class**. If you add a new scraper, exten
 
 **Schedule:** Nightly at midnight UTC (`0 0 * * *`)  
 **Model:** Gemma 4 8B — Ollama model tag `gemma4:e4b`, ~9.6 GB. Chosen over 26B for speed on `vc2-4c-16gb` (16GB RAM). Requires `ollama pull gemma4:e4b` on the inference VM before deploying.  
-**Inference server:** Ollama on a dedicated Vultr `vc2-4c-16gb` VM, separate from the K8s cluster but on the same Vultr VPC. Exposes an OpenAI-compatible endpoint at `http://<OLLAMA_HOST>:11434/v1`.  
+**Inference server:** Ollama on a dedicated Vultr AMD High Performance VM (4 vCPU, 12 GB RAM), separate from the K8s cluster but on the same Vultr VPC. IP stored in `OLLAMA_HOST` K8s secret. Exposes an OpenAI-compatible endpoint at `http://<OLLAMA_HOST>:11434/v1`.  
 **Client:** `openai.OpenAI(base_url=f"http://{OLLAMA_HOST}:11434/v1", api_key="ollama")` — Ollama does not require a real API key.  
 **All LLM calls are contained in `synthesis_agent.py` — never instantiate the Ollama client elsewhere.**
 
