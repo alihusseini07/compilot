@@ -2,6 +2,28 @@
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- User accounts
+CREATE TABLE IF NOT EXISTS users (
+    id              SERIAL PRIMARY KEY,
+    email           VARCHAR(255) NOT NULL UNIQUE,
+    hashed_password VARCHAR(255) NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
+
+-- Per-user saved competitors
+CREATE TABLE IF NOT EXISTS saved_competitors (
+    id           SERIAL PRIMARY KEY,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    company      VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255),
+    added_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_saved_competitors_user_company UNIQUE (user_id, company)
+);
+
+CREATE INDEX IF NOT EXISTS idx_saved_competitors_user ON saved_competitors (user_id);
+
 -- Raw scraped signals from all sources
 CREATE TABLE IF NOT EXISTS signals (
     id          SERIAL PRIMARY KEY,

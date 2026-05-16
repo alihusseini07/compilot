@@ -16,15 +16,18 @@ Legacy endpoints kept for the existing frontend (App.jsx / RadarDashboard):
   GET  /api/health
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, func
 
+from api.auth import get_current_user
 from db.models import (
     DailyReport,
     Inference,
     MonthlyReport,
+    SavedCompetitor,
     Signal,
+    User,
     WeeklyReport,
     async_session,
 )
@@ -41,6 +44,59 @@ legacy = APIRouter(prefix="/api")
 class CompanyRequest(BaseModel):
     company: str
     lookback_days: int = 7
+
+
+class SaveCompetitorRequest(BaseModel):
+    company: str
+    display_name: str = ""
+
+
+# ── Competitor management (auth-protected) ───────────────────────────────────
+
+
+@router.get("/competitors")
+async def list_competitors(current_user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(SavedCompetitor)
+            .where(SavedCompetitor.user_id == current_user.id)
+            .order_by(SavedCompetitor.added_at.desc())
+        )).scalars().all()
+    return {"competitors": [r.to_dict() for r in rows]}
+
+
+@router.post("/competitors", status_code=201)
+async def save_competitor(req: SaveCompetitorRequest, current_user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        existing = (await session.execute(
+            select(SavedCompetitor)
+            .where(SavedCompetitor.user_id == current_user.id, SavedCompetitor.company == req.company)
+        )).scalar_one_or_none()
+        if existing:
+            raise HTTPException(status_code=409, detail="Competitor already saved")
+
+        sc = SavedCompetitor(
+            user_id=current_user.id,
+            company=req.company,
+            display_name=req.display_name or req.company,
+        )
+        session.add(sc)
+        await session.commit()
+        await session.refresh(sc)
+    return sc.to_dict()
+
+
+@router.delete("/competitors/{company}", status_code=204)
+async def remove_competitor(company: str, current_user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        sc = (await session.execute(
+            select(SavedCompetitor)
+            .where(SavedCompetitor.user_id == current_user.id, SavedCompetitor.company == company)
+        )).scalar_one_or_none()
+        if sc is None:
+            raise HTTPException(status_code=404, detail="Competitor not found")
+        await session.delete(sc)
+        await session.commit()
 
 
 # ── New canonical endpoints ──────────────────────────────────────────────────

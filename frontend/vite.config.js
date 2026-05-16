@@ -9,6 +9,8 @@ export default defineConfig({
       "/api": { target: "http://localhost:8000", changeOrigin: true },
       "/analyze": { target: "http://localhost:8000", changeOrigin: true },
       "/reports": { target: "http://localhost:8000", changeOrigin: true },
+      "/auth": { target: "http://localhost:8000", changeOrigin: true },
+      "/competitors": { target: "http://localhost:8000", changeOrigin: true },
     },
   },
 });
