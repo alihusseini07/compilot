@@ -96,9 +96,8 @@ compilot/
 │       ├── main.jsx
 │       ├── App.jsx
 │       └── components/
-│           ├── RadarDashboard.jsx  # Main radar/timeline view (legacy data path)
-│           ├── SignalFeed.jsx      # Raw signal stream panel
-│           └── InferenceCard.jsx   # Single inference display card
+│           ├── ReportCard.jsx      # Single report card (daily/weekly/monthly)
+│           └── HistoryList.jsx     # Collapsible past-reports list
 └── k8s/
     ├── backend-deployment.yaml
     ├── frontend-deployment.yaml
@@ -131,7 +130,9 @@ compilot/
   kubectl create job --from=cronjob/<name> <job-name>  # trigger scraper manually
   ```
 - **Secrets** are in K8s Secret `compilot-secrets` — never read from `.env` in prod
-- Two known failing jobs as of 2026-05-16: `pricing-scraper`, `synthesis-agent` — investigate before running
+- All K8s deployments use `imagePullPolicy: Always` — pods always pull from Docker Hub on restart.
+- **Docker image tagging gotcha:** `docker compose build` tags the image as `compilot-frontend:latest` (local name), NOT `ahusseini07/compilot-frontend:latest`. Always retag before pushing: `docker tag compilot-frontend:latest ahusseini07/compilot-frontend:latest && docker push ahusseini07/compilot-frontend:latest`. Same applies to the backend image (`compilot-backend` → `ahusseini07/compilot-backend`).
+- **nginx proxy:** `frontend/nginx.conf` proxies `/api/`, `/analyze/`, and `/reports/` to the backend. Any new route prefix added to the FastAPI app must also get a `location` block in nginx.conf, then the frontend image must be rebuilt and redeployed.
 
 ## Key Conventions
 
