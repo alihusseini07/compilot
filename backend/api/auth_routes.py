@@ -1,7 +1,7 @@
 """Auth routes: register and login."""
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from api.auth import create_token, hash_password, verify_password
@@ -11,12 +11,12 @@ auth_router = APIRouter(prefix="/auth")
 
 
 class RegisterRequest(BaseModel):
-    email: EmailStr
+    email: str
     password: str
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str
     password: str
 
 
