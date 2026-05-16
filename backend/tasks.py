@@ -21,7 +21,13 @@ celery_app = Celery(
     backend=_redis_url,
 )
 
-celery_app.conf.update(task_serializer="json", result_serializer="json", accept_content=["json"])
+celery_app.conf.update(
+    task_serializer="json",
+    result_serializer="json",
+    accept_content=["json"],
+    task_soft_time_limit=540,
+    task_time_limit=600,
+)
 
 
 @celery_app.task(name="tasks.run_all_scrapers")

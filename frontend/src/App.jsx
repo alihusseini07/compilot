@@ -58,7 +58,7 @@ export default function App() {
 
       // Poll for inferences (synthesis takes longer — Ollama call)
       let inferences = [];
-      const infDeadline = Date.now() + 120_000;
+      const infDeadline = Date.now() + 600_000;
       while (Date.now() < infDeadline) {
         await new Promise((r) => setTimeout(r, 5000));
         const resp = await fetch(`${API}/inferences/${slug}`);

@@ -93,7 +93,7 @@ class SynthesisAgent:
                 select(Signal)
                 .where(Signal.company == company, Signal.scraped_at >= cutoff)
                 .order_by(Signal.scraped_at.desc())
-                .limit(200)  # context window guard
+                .limit(40)  # context window guard — keep prompt manageable for CPU inference
             )
             result = await session.execute(stmt)
             rows = result.scalars().all()
@@ -105,7 +105,7 @@ class SynthesisAgent:
 
         # Include only fields the model needs — reduces context usage
         slim_signals = [
-            {"id": s["id"], "source_type": s["source_type"], "content": s["content"], "scraped_at": s["scraped_at"]}
+            {"id": s["id"], "source_type": s["source_type"], "content": s["content"][:300], "scraped_at": s["scraped_at"]}
             for s in signals
         ]
 
@@ -126,7 +126,8 @@ class SynthesisAgent:
                 ],
                 temperature=0.2,
                 response_format={"type": "json_object"},
-                max_tokens=4096,
+                max_tokens=2048,
+                timeout=480,
             )
             raw = response.choices[0].message.content
         except Exception as e:
