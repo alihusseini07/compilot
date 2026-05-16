@@ -7,6 +7,7 @@ Fallback:     if fewer than 7 daily reports exist, runs the 3 scraper agents dir
 """
 
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -38,7 +39,7 @@ class WeeklySynthesisAgent:
         daily_reports = await self._load_recent_daily(company)
         if len(daily_reports) >= DAILY_THRESHOLD:
             logger.info(f"[weekly-synthesis] normal mode for {company} ({len(daily_reports)} dailies)")
-            report_text = self._call_llm_normal(company, daily_reports)
+            report_text = await self._call_llm_normal(company, daily_reports)
             fallback_used = False
         else:
             logger.info(
@@ -46,7 +47,7 @@ class WeeklySynthesisAgent:
                 f"(only {len(daily_reports)} daily reports, need {DAILY_THRESHOLD})"
             )
             conclusions = await self._direct_scrape(company, "last_7_days")
-            report_text = self._call_llm_fallback(company, conclusions)
+            report_text = await self._call_llm_fallback(company, conclusions)
             fallback_used = True
 
         async with async_session() as session:
@@ -104,7 +105,7 @@ class WeeklySynthesisAgent:
                 normalized.append(r)
         return normalized
 
-    def _call_llm_normal(self, company: str, daily_reports: list[dict]) -> str:
+    async def _call_llm_normal(self, company: str, daily_reports: list[dict]) -> str:
         prompt = (
             "You are a senior competitive intelligence analyst. "
             f"Here are the daily intelligence reports for {company} over the past week: "
@@ -114,7 +115,7 @@ class WeeklySynthesisAgent:
         )
         return self._invoke(prompt, "weekly-normal")
 
-    def _call_llm_fallback(self, company: str, conclusions: list[dict]) -> str:
+    async def _call_llm_fallback(self, company: str, conclusions: list[dict]) -> str:
         prompt = (
             "You are a senior competitive intelligence analyst. "
             "Due to limited daily data, here are direct signals collected over the past "
@@ -124,8 +125,8 @@ class WeeklySynthesisAgent:
         )
         return self._invoke(prompt, "weekly-fallback")
 
-    def _invoke(self, prompt: str, tag: str) -> str:
-        try:
+    async def _invoke(self, prompt: str, tag: str) -> str:
+        def _call():
             response = ollama_client.chat.completions.create(
                 model=MODEL,
                 messages=[
@@ -137,6 +138,10 @@ class WeeklySynthesisAgent:
                 timeout=480,
             )
             return (response.choices[0].message.content or "").strip()
+
+        try:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, _call)
         except Exception as e:
             logger.exception(f"[{tag}] LLM call failed")
             return f"Weekly synthesis failed: {e}"

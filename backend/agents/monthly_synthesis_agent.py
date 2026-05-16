@@ -7,6 +7,7 @@ Fallback:     if fewer than 4 weekly reports exist, runs the 3 scraper agents wi
 """
 
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -38,7 +39,7 @@ class MonthlySynthesisAgent:
         weekly_reports = await self._load_recent_weekly(company)
         if len(weekly_reports) >= WEEKLY_THRESHOLD:
             logger.info(f"[monthly-synthesis] normal mode for {company} ({len(weekly_reports)} weeklies)")
-            report_text = self._call_llm_normal(company, weekly_reports)
+            report_text = await self._call_llm_normal(company, weekly_reports)
             fallback_used = False
         else:
             logger.info(
@@ -46,7 +47,7 @@ class MonthlySynthesisAgent:
                 f"(only {len(weekly_reports)} weekly reports, need {WEEKLY_THRESHOLD})"
             )
             conclusions = await self._direct_scrape(company, "last_30_days")
-            report_text = self._call_llm_fallback(company, conclusions)
+            report_text = await self._call_llm_fallback(company, conclusions)
             fallback_used = True
 
         async with async_session() as session:
@@ -104,7 +105,7 @@ class MonthlySynthesisAgent:
                 normalized.append(r)
         return normalized
 
-    def _call_llm_normal(self, company: str, weekly_reports: list[dict]) -> str:
+    async def _call_llm_normal(self, company: str, weekly_reports: list[dict]) -> str:
         prompt = (
             "You are a senior competitive intelligence analyst. "
             f"Here are four weeks of intelligence reports for {company}: "
@@ -115,7 +116,7 @@ class MonthlySynthesisAgent:
         )
         return self._invoke(prompt, "monthly-normal")
 
-    def _call_llm_fallback(self, company: str, conclusions: list[dict]) -> str:
+    async def _call_llm_fallback(self, company: str, conclusions: list[dict]) -> str:
         prompt = (
             "You are a senior competitive intelligence analyst. "
             "Due to limited weekly data, here are direct signals collected over the past "
@@ -125,8 +126,8 @@ class MonthlySynthesisAgent:
         )
         return self._invoke(prompt, "monthly-fallback")
 
-    def _invoke(self, prompt: str, tag: str) -> str:
-        try:
+    async def _invoke(self, prompt: str, tag: str) -> str:
+        def _call():
             response = ollama_client.chat.completions.create(
                 model=MODEL,
                 messages=[
@@ -138,6 +139,10 @@ class MonthlySynthesisAgent:
                 timeout=480,
             )
             return (response.choices[0].message.content or "").strip()
+
+        try:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, _call)
         except Exception as e:
             logger.exception(f"[{tag}] LLM call failed")
             return f"Monthly synthesis failed: {e}"

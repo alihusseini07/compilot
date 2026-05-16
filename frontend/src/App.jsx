@@ -6,7 +6,7 @@ import "./index.css";
 const TABS = ["daily", "weekly", "monthly"];
 const HISTORY_LIMITS = { daily: 7, weekly: 4, monthly: 3 };
 const POLL_INTERVAL = 5000;
-const POLL_TIMEOUT = 180000;
+const POLL_TIMEOUT = 600000;
 
 const STATUS_STEPS = [
   "Queuing analysis…",

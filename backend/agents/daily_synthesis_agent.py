@@ -4,6 +4,8 @@ by JobsAgent, ResearchAgent, TechAgent for a single day, then writes a row to
 the `daily_reports` table.
 """
 
+import asyncio
+import functools
 import json
 import logging
 import os
@@ -40,7 +42,7 @@ def _overall_confidence(conclusions: list[dict]) -> str:
 class DailySynthesisAgent:
     async def run(self, company: str, conclusions: list[dict]) -> dict:
         logger.info(f"[daily-synthesis] start company={company} conclusions={len(conclusions)}")
-        report_text, key_insights = self._call_llm(company, conclusions)
+        report_text, key_insights = await self._call_llm(company, conclusions)
 
         async with async_session() as session:
             row = DailyReport(
@@ -57,7 +59,7 @@ class DailySynthesisAgent:
         logger.info(f"[daily-synthesis] wrote daily report id={row.id} for {company}")
         return row.to_dict()
 
-    def _call_llm(self, company: str, conclusions: list[dict]) -> tuple[str, list[str]]:
+    async def _call_llm(self, company: str, conclusions: list[dict]) -> tuple[str, list[str]]:
         prompt = (
             "You are a senior competitive intelligence analyst. "
             "Three specialized agents have analyzed different data sources about "
@@ -71,7 +73,7 @@ class DailySynthesisAgent:
             "Return no markdown, no prose outside the JSON object."
         )
 
-        try:
+        def _call():
             response = ollama_client.chat.completions.create(
                 model=MODEL,
                 messages=[
@@ -83,7 +85,11 @@ class DailySynthesisAgent:
                 max_tokens=2048,
                 timeout=480,
             )
-            raw = (response.choices[0].message.content or "").strip()
+            return (response.choices[0].message.content or "").strip()
+
+        try:
+            loop = asyncio.get_event_loop()
+            raw = await loop.run_in_executor(None, _call)
         except Exception as e:
             logger.exception("[daily-synthesis] LLM call failed")
             return (f"Daily synthesis failed: {e}", [])

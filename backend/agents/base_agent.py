@@ -4,12 +4,17 @@ BaseAgent — shared lifecycle for all scraper agents (jobs, research, tech).
 Each scraper:
   1. Implements `_fetch(company, date_range)` to pull raw data from its sources.
   2. Implements `_build_prompt(company, data)` to render the LLM prompt.
-  3. Calls `self.reason(data, prompt)` from inside `run()` to get a conclusion object.
+  3. Calls `await self.reason(data, prompt)` from inside `run()` to get a conclusion object.
 
 The conclusion object schema is identical for every scraper so the synthesis tiers
 can consume them uniformly.
+
+The sync OpenAI SDK call in `reason()` runs in a thread pool executor so it does not
+block the asyncio event loop — all 3 scraper agents can make LLM calls concurrently.
 """
 
+import asyncio
+import functools
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -34,6 +39,20 @@ def _confidence_bucket(signal_count: int) -> str:
     if signal_count >= 1:
         return "low"
     return "none"
+
+
+def _sync_llm_call(prompt: str) -> str:
+    """Blocking OpenAI SDK call — run in executor to avoid blocking the event loop."""
+    response = ollama_client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.2,
+        timeout=480,
+    )
+    return (response.choices[0].message.content or "").strip()
 
 
 class BaseAgent(ABC):
@@ -61,15 +80,15 @@ class BaseAgent(ABC):
             return self._error_conclusion(date_range, str(exc), signal_count=0)
 
         prompt = self._build_prompt(company, data)
-        conclusion = self.reason(data, prompt, date_range)
+        conclusion = await self.reason(data, prompt, date_range)
         logger.info(
             f"[{self.agent_name}] done company={company} "
             f"signals={conclusion['signal_count']} confidence={conclusion['confidence']}"
         )
         return conclusion
 
-    def reason(self, data: list[dict], prompt: str, date_range: str) -> dict:
-        """Call Ollama with the prompt and wrap the response in a conclusion object."""
+    async def reason(self, data: list[dict], prompt: str, date_range: str) -> dict:
+        """Call Ollama in a thread executor (non-blocking) and wrap response in a conclusion object."""
         signal_count = len(data)
         confidence = _confidence_bucket(signal_count)
 
@@ -84,16 +103,8 @@ class BaseAgent(ABC):
             }
 
         try:
-            response = ollama_client.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.2,
-                timeout=480,
-            )
-            text = (response.choices[0].message.content or "").strip()
+            loop = asyncio.get_event_loop()
+            text = await loop.run_in_executor(None, functools.partial(_sync_llm_call, prompt))
         except Exception as exc:
             logger.exception(f"[{self.agent_name}] LLM call failed")
             return self._error_conclusion(date_range, str(exc), signal_count=signal_count)
