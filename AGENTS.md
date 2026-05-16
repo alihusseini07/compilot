@@ -3,9 +3,9 @@
 Compilot's analysis pipeline is a tiered cascade: **3 domain scraper agents** feed a
 **daily synthesis**, daily reports roll up into a **weekly synthesis**, and weekly
 reports roll up into a **monthly synthesis**. Every agent — scrapers and synthesizers
-— calls the LLM (Gemma 4 on Ollama). The orchestrator (`backend/agents/orchestrator.py`)
-is the single entry point and is invoked by the FastAPI `/analyze` endpoint or the
-three K8s CronJobs.
+— calls the LLM (`nvidia/DeepSeek-V3.2-NVFP4` via Vultr Serverless Inference). The
+orchestrator (`backend/agents/orchestrator.py`) is the single entry point and is
+invoked by the FastAPI `/analyze` endpoint or the three K8s CronJobs.
 
 ```
 Orchestrator
@@ -18,11 +18,11 @@ Orchestrator
                 ↓
         Weekly Synthesis Agent
         (reasons across 7 daily reports → weekly_reports row)
-        (FALLBACK: if <7 daily reports, calls all 3 scrapers with last_7_days)
+        (requires ≥7 daily reports — raises 422 if fewer exist)
                 ↓
         Monthly Synthesis Agent
         (reasons across 4 weekly reports → monthly_reports row)
-        (FALLBACK: if <4 weekly reports, calls all 3 scrapers with last_30_days)
+        (requires ≥4 weekly reports — raises 422 if fewer exist)
 ```
 
 ---
@@ -57,10 +57,10 @@ Contract:
 - `async _fetch(company, date_range) -> list[dict]` — pull raw data points.
 - `_build_prompt(company, data) -> str` — render the per-agent LLM prompt.
 - `async run(company, date_range="last_day") -> dict` — fetch + reason + wrap into a conclusion object. Do not override.
-- `reason(data, prompt, date_range) -> dict` — Ollama call helper.
+- `async reason(data, prompt, date_range) -> dict` — inference call helper. Runs the sync OpenAI SDK call in a thread executor (`asyncio.get_running_loop().run_in_executor`) so all 3 scraper LLM calls can execute concurrently.
 
 All LLM access goes through `BaseAgent.reason()`, which uses the single shared
-client in `backend/llm.py`. **Never instantiate a second `OpenAI(...)` client.**
+client in `backend/llm.py` (Vultr Serverless Inference, OpenAI-compatible). **Never instantiate a second `OpenAI(...)` client.**
 
 ---
 
@@ -102,29 +102,15 @@ making.
 ### Daily — `backend/agents/daily_synthesis_agent.py`
 
 Input: list of 3 conclusion objects from the scrapers.
-Action: prompts the LLM for a JSON object `{report_text, key_insights}` using
-`response_format={"type": "json_object"}`. Writes one row to `daily_reports`
-with the parsed `report_text`, `key_insights` array, and an
-`overall_confidence` derived from the 3 input conclusions.
+Action: prompts the LLM with a plain-text format instruction (no JSON response_format — unreliable with DeepSeek via Vultr). Response is split on a `KEY INSIGHTS:` separator to extract `report_text` and `key_insights` bullet points. Writes one row to `daily_reports` with `report_text`, `key_insights` array, and `overall_confidence` derived from the 3 input conclusions.
 
 ### Weekly — `backend/agents/weekly_synthesis_agent.py`
 
-Normal mode: queries the last 7 `daily_reports` rows for the company, reasons
-across them, writes a `weekly_reports` row with `fallback_used=false`.
-
-Fallback mode (fewer than 7 daily reports exist): calls JobsAgent +
-ResearchAgent + TechAgent with `date_range="last_7_days"`, synthesizes
-directly, writes the row with `fallback_used=true`. Logged clearly with
-`[weekly-synthesis] FALLBACK MODE for <company>`.
+Requires ≥7 `daily_reports` rows for the company. If fewer exist, raises `InsufficientDataError` — the API layer catches this and returns HTTP 422 with a clear message ("Run Daily first"). No fallback scraping. When data is sufficient, reasons across the 7 reports and writes a `weekly_reports` row.
 
 ### Monthly — `backend/agents/monthly_synthesis_agent.py`
 
-Normal mode: queries the last 4 `weekly_reports` rows for the company, reasons
-across them, writes a `monthly_reports` row with `fallback_used=false`.
-
-Fallback mode (fewer than 4 weekly reports exist): calls the 3 scrapers with
-`date_range="last_30_days"`, synthesizes directly, writes the row with
-`fallback_used=true`.
+Requires ≥4 `weekly_reports` rows for the company. If fewer exist, raises `InsufficientDataError` → HTTP 422. No fallback scraping. When data is sufficient, reasons across the 4 reports and writes a `monthly_reports` row.
 
 ---
 
@@ -137,8 +123,8 @@ async def run(company: str, mode: str = "daily") -> dict
 ```
 
 - `mode="daily"` — runs the 3 scrapers in parallel with `asyncio.gather(return_exceptions=True)`, normalizes any raised exceptions into a conclusion object with `error` set, then calls `DailySynthesisAgent`.
-- `mode="weekly"` — delegates to `WeeklySynthesisAgent` (which owns its own normal/fallback branch).
-- `mode="monthly"` — delegates to `MonthlySynthesisAgent`.
+- `mode="weekly"` — delegates to `WeeklySynthesisAgent` (raises `InsufficientDataError` if <7 daily reports exist; caught at API layer as 422).
+- `mode="monthly"` — delegates to `MonthlySynthesisAgent` (raises `InsufficientDataError` if <4 weekly reports exist; caught at API layer as 422).
 
 **Failure isolation**: any scraper that raises is caught by `asyncio.gather`;
 the daily synthesis still runs with whatever conclusions did succeed. Logs are
@@ -203,15 +189,15 @@ K8s CronJobs (each `kubectl apply -f k8s/<name>.yaml`):
 | `k8s/monthly-cronjob.yaml` | `0 0 1 * *`  | monthly |
 
 All three iterate over `TRACKED_COMPANIES` (comma-separated env), call
-`agents.orchestrator.run(company, mode)`, and use the same `compilot-secrets`
-secret refs as the old scrapers (`OLLAMA_HOST`, `DATABASE_URL`, `REDIS_URL`,
-`OLLAMA_MODEL`, plus optional `GITHUB_TOKEN`, `LENS_API_TOKEN`).
+`agents.orchestrator.run(company, mode)`, and pull secrets from `compilot-secrets`
+(`INFERENCE_API_KEY`, `INFERENCE_BASE_URL`, `DATABASE_URL`, `REDIS_URL`,
+plus optional `GITHUB_TOKEN`, `LENS_API_TOKEN`) and `INFERENCE_MODEL` from `compilot-config`.
 
 ---
 
 ## Claude Code Working Rules
 
-1. **All LLM access goes through `BaseAgent.reason()` or the synthesis agents' helpers**, each importing `client` from `backend/llm.py`. Never instantiate a second Ollama client.
+1. **All LLM access goes through `BaseAgent.reason()` or the synthesis agents' helpers**, each importing `client` from `backend/llm.py` (Vultr Serverless Inference). Never instantiate a second inference client.
 2. **All DB writes use the SQLAlchemy models in `backend/db/models.py`**. No raw SQL strings.
 3. **Scraper failures must be isolated.** Use `asyncio.gather(return_exceptions=True)` whenever fanning out, and normalize exceptions into conclusion objects with `error` set.
 4. **No secrets in agent code.** Read from `os.environ` — never hardcode.

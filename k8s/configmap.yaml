@@ -7,6 +7,6 @@ data:
   PORT: "8000"
   LOG_LEVEL: "info"
   LOOKBACK_DAYS: "30"
-  OLLAMA_MODEL: "gemma4:26b"
+  INFERENCE_MODEL: "nvidia/DeepSeek-V3.2-NVFP4"
   CORS_ORIGINS: "http://155.138.128.101"
-  # OLLAMA_HOST is in the compilot-secrets Secret (contains the VM's internal IP)
+  # INFERENCE_API_KEY and INFERENCE_BASE_URL are in compilot-secrets

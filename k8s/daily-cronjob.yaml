@@ -31,12 +31,20 @@ spec:
                           except Exception as e:
                               print(f"[daily-cronjob] failed for {c.strip()}: {e}")
                   asyncio.run(main())
+              envFrom:
+                - configMapRef:
+                    name: compilot-config
               env:
-                - name: OLLAMA_HOST
+                - name: INFERENCE_API_KEY
                   valueFrom:
                     secretKeyRef:
                       name: compilot-secrets
-                      key: OLLAMA_HOST
+                      key: INFERENCE_API_KEY
+                - name: INFERENCE_BASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: compilot-secrets
+                      key: INFERENCE_BASE_URL
                 - name: DATABASE_URL
                   valueFrom:
                     secretKeyRef:
@@ -47,11 +55,6 @@ spec:
                     secretKeyRef:
                       name: compilot-secrets
                       key: REDIS_URL
-                - name: OLLAMA_MODEL
-                  valueFrom:
-                    secretKeyRef:
-                      name: compilot-secrets
-                      key: OLLAMA_MODEL
                 - name: GITHUB_TOKEN
                   valueFrom:
                     secretKeyRef:

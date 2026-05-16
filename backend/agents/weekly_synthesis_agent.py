@@ -16,7 +16,7 @@ from llm import client as ollama_client
 
 logger = logging.getLogger(__name__)
 
-MODEL = os.getenv("OLLAMA_MODEL", "gemma4:e4b")
+MODEL = os.getenv("INFERENCE_MODEL", "DeepSeek-V3.2-NVFP4")
 DAILY_THRESHOLD = 7
 
 SYSTEM_PROMPT = (
