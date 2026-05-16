@@ -5,7 +5,6 @@ the `daily_reports` table.
 """
 
 import asyncio
-import functools
 import json
 import logging
 import os
@@ -23,6 +22,8 @@ SYSTEM_PROMPT = (
     "Always be specific and evidence-based. Never speculate without data."
 )
 
+_SEPARATOR = "KEY INSIGHTS:"
+
 
 def _overall_confidence(conclusions: list[dict]) -> str:
     ranks = {"high": 3, "medium": 2, "low": 1, "none": 0}
@@ -37,6 +38,20 @@ def _overall_confidence(conclusions: list[dict]) -> str:
     if avg >= 0.5:
         return "low"
     return "none"
+
+
+def _parse_response(raw: str) -> tuple[str, list[str]]:
+    """Split on KEY INSIGHTS: separator. Everything before is report_text,
+    bullet lines after become key_insights."""
+    if _SEPARATOR in raw:
+        report_part, insights_part = raw.split(_SEPARATOR, 1)
+        insights = []
+        for line in insights_part.splitlines():
+            line = line.strip().lstrip("-•*123456789. ").strip()
+            if line:
+                insights.append(line)
+        return report_part.strip(), insights[:8]
+    return raw.strip(), []
 
 
 class DailySynthesisAgent:
@@ -63,14 +78,15 @@ class DailySynthesisAgent:
         prompt = (
             "You are a senior competitive intelligence analyst. "
             "Three specialized agents have analyzed different data sources about "
-            f"{company} for today. Here are their conclusions: {json.dumps(conclusions, default=str)}. "
+            f"{company} for today. Here are their conclusions:\n"
+            f"{json.dumps(conclusions, default=str, indent=2)}\n\n"
             "Reason across all three signals together. What is the most important "
             "strategic insight from today? What patterns emerge that no single "
-            "source reveals alone? "
-            "Respond with a JSON object exactly matching this schema: "
-            '{"report_text": "<concise daily intelligence report, 4-8 sentences>", '
-            '"key_insights": ["<insight1>", "<insight2>", ...]}. '
-            "Return no markdown, no prose outside the JSON object."
+            "source reveals alone?\n\n"
+            "Write your response in exactly this format — plain text, no JSON, no markdown:\n\n"
+            "First write a 4-8 sentence intelligence report as flowing prose.\n\n"
+            f"Then write exactly '{_SEPARATOR}' on its own line.\n\n"
+            "Then list 3-5 key insights as bullet points, one per line, starting each with '- '."
         )
 
         def _call():
@@ -81,7 +97,6 @@ class DailySynthesisAgent:
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.2,
-                response_format={"type": "json_object"},
                 max_tokens=2048,
                 timeout=480,
             )
@@ -94,13 +109,4 @@ class DailySynthesisAgent:
             logger.exception("[daily-synthesis] LLM call failed")
             return (f"Daily synthesis failed: {e}", [])
 
-        try:
-            parsed = json.loads(raw)
-            text = str(parsed.get("report_text", "")).strip()
-            insights = parsed.get("key_insights", [])
-            if not isinstance(insights, list):
-                insights = []
-            return text or raw, [str(i) for i in insights][:10]
-        except json.JSONDecodeError:
-            logger.warning(f"[daily-synthesis] non-JSON response, using raw text: {raw[:200]}")
-            return raw, []
+        return _parse_response(raw)
