@@ -117,13 +117,43 @@ body {
   color: #c084fc;
   margin-bottom: 28px;
 }
+.status-bar-warn {
+  background: #1c110a;
+  border-color: #f9731630;
+  color: #fb923c;
+}
+.refresh-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid #f9731650;
+  border-radius: 6px;
+  color: #fb923c;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  transition: background 0.15s;
+}
+.refresh-btn:hover { background: #f9731615; }
 
 /* ── Tabs ───────────────────────────────── */
 .tabs {
   display: flex;
+  align-items: center;
   gap: 4px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 28px;
+}
+.tab-spacer { flex: 1; }
+.tab-spinner {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border: 1.5px solid #a855f766;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 .tab-btn {
   background: none;

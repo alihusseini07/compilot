@@ -18,7 +18,7 @@ Legacy endpoints kept for the existing frontend (App.jsx / RadarDashboard):
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from db.models import (
     DailyReport,
@@ -48,7 +48,37 @@ class CompanyRequest(BaseModel):
 
 @router.post("/analyze/{company}")
 async def analyze(company: str, mode: str = Query("daily", pattern="^(daily|weekly|monthly)$")):
-    """Trigger orchestrator. Returns Celery job_id; the actual work runs in the worker."""
+    """Trigger orchestrator. Returns Celery job_id; the actual work runs in the worker.
+    For weekly/monthly, checks upfront whether enough upstream reports exist."""
+    from agents.weekly_synthesis_agent import DAILY_THRESHOLD
+    from agents.monthly_synthesis_agent import WEEKLY_THRESHOLD
+
+    if mode == "weekly":
+        async with async_session() as session:
+            count = (await session.execute(
+                select(func.count()).select_from(DailyReport)
+                .where(DailyReport.company == company)
+            )).scalar_one()
+        if count < DAILY_THRESHOLD:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Need {DAILY_THRESHOLD} daily reports to generate a weekly report, "
+                       f"but only {count} exist for '{company}'. Run Daily first."
+            )
+
+    if mode == "monthly":
+        async with async_session() as session:
+            count = (await session.execute(
+                select(func.count()).select_from(WeeklyReport)
+                .where(WeeklyReport.company == company)
+            )).scalar_one()
+        if count < WEEKLY_THRESHOLD:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Need {WEEKLY_THRESHOLD} weekly reports to generate a monthly report, "
+                       f"but only {count} exist for '{company}'. Run Weekly first."
+            )
+
     task = analyze_company_task.delay(company, mode)
     return {"job_id": task.id, "company": company, "mode": mode, "status": "queued"}
 

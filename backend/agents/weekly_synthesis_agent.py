@@ -1,13 +1,9 @@
 """
-WeeklySynthesisAgent — produces a weekly intelligence report.
-
-Normal mode:  loads the last 7 DailyReport rows for the company and reasons across them.
-Fallback:     if fewer than 7 daily reports exist, runs the 3 scraper agents directly
-              with date_range="last_7_days" and synthesizes from their conclusions.
+WeeklySynthesisAgent — reads the last 7 DailyReport rows and synthesizes a weekly report.
+If fewer than 7 daily reports exist, raises InsufficientDataError instead of running scrapers.
 """
 
 import asyncio
-import functools
 import json
 import logging
 import os
@@ -29,7 +25,11 @@ SYSTEM_PROMPT = (
 )
 
 
-def _week_start() -> datetime:
+class InsufficientDataError(Exception):
+    pass
+
+
+def _week_start():
     today = datetime.now(timezone.utc).date()
     return today - timedelta(days=today.weekday())
 
@@ -37,33 +37,28 @@ def _week_start() -> datetime:
 class WeeklySynthesisAgent:
     async def run(self, company: str) -> dict:
         daily_reports = await self._load_recent_daily(company)
-        if len(daily_reports) >= DAILY_THRESHOLD:
-            logger.info(f"[weekly-synthesis] normal mode for {company} ({len(daily_reports)} dailies)")
-            report_text = await self._call_llm_normal(company, daily_reports)
-            fallback_used = False
-        else:
-            logger.info(
-                f"[weekly-synthesis] FALLBACK MODE for {company} "
-                f"(only {len(daily_reports)} daily reports, need {DAILY_THRESHOLD})"
+        have = len(daily_reports)
+        if have < DAILY_THRESHOLD:
+            raise InsufficientDataError(
+                f"Need {DAILY_THRESHOLD} daily reports to generate a weekly report, "
+                f"but only {have} exist for '{company}'. Run Daily first."
             )
-            conclusions = await self._direct_scrape(company, "last_7_days")
-            report_text = await self._call_llm_fallback(company, conclusions)
-            fallback_used = True
+
+        logger.info(f"[weekly-synthesis] start company={company} dailies={have}")
+        report_text = await self._invoke_llm(company, daily_reports)
 
         async with async_session() as session:
             row = WeeklyReport(
                 company=company,
                 week_start=_week_start(),
                 report_text=report_text,
-                fallback_used=fallback_used,
+                fallback_used=False,
             )
             session.add(row)
             await session.commit()
             await session.refresh(row)
 
-        logger.info(
-            f"[weekly-synthesis] wrote weekly report id={row.id} fallback={fallback_used} for {company}"
-        )
+        logger.info(f"[weekly-synthesis] wrote weekly report id={row.id} for {company}")
         return row.to_dict()
 
     async def _load_recent_daily(self, company: str) -> list[dict]:
@@ -78,54 +73,16 @@ class WeeklySynthesisAgent:
             rows = result.scalars().all()
         return [r.to_dict() for r in rows]
 
-    async def _direct_scrape(self, company: str, date_range: str) -> list[dict]:
-        from agents.jobs_agent import JobsAgent
-        from agents.research_agent import ResearchAgent
-        from agents.tech_agent import TechAgent
-
-        results = await asyncio.gather(
-            JobsAgent().run(company, date_range),
-            ResearchAgent().run(company, date_range),
-            TechAgent().run(company, date_range),
-            return_exceptions=True,
-        )
-
-        normalized = []
-        for r in results:
-            if isinstance(r, BaseException):
-                normalized.append({
-                    "agent": "unknown",
-                    "signal_count": 0,
-                    "conclusion": "",
-                    "confidence": "none",
-                    "date_range": date_range,
-                    "error": str(r),
-                })
-            else:
-                normalized.append(r)
-        return normalized
-
-    async def _call_llm_normal(self, company: str, daily_reports: list[dict]) -> str:
+    async def _invoke_llm(self, company: str, daily_reports: list[dict]) -> str:
         prompt = (
             "You are a senior competitive intelligence analyst. "
             f"Here are the daily intelligence reports for {company} over the past week: "
             f"{json.dumps(daily_reports, default=str)}. "
-            "What are the dominant themes? What trends are building? What should we watch "
-            "next week? Write a weekly synthesis report in plain text, 6-10 sentences."
+            "What are the dominant themes? What trends are building? "
+            "What should we watch next week? "
+            "Write a weekly synthesis report in plain text, 6-10 sentences."
         )
-        return self._invoke(prompt, "weekly-normal")
 
-    async def _call_llm_fallback(self, company: str, conclusions: list[dict]) -> str:
-        prompt = (
-            "You are a senior competitive intelligence analyst. "
-            "Due to limited daily data, here are direct signals collected over the past "
-            f"7 days for {company}: {json.dumps(conclusions, default=str)}. "
-            "Synthesize these into a weekly intelligence report covering dominant themes "
-            "and emerging trends. Plain text, 6-10 sentences."
-        )
-        return self._invoke(prompt, "weekly-fallback")
-
-    async def _invoke(self, prompt: str, tag: str) -> str:
         def _call():
             response = ollama_client.chat.completions.create(
                 model=MODEL,
@@ -140,8 +97,8 @@ class WeeklySynthesisAgent:
             return (response.choices[0].message.content or "").strip()
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, _call)
         except Exception as e:
-            logger.exception(f"[{tag}] LLM call failed")
+            logger.exception("[weekly-synthesis] LLM call failed")
             return f"Weekly synthesis failed: {e}"

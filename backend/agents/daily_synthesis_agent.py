@@ -88,7 +88,7 @@ class DailySynthesisAgent:
             return (response.choices[0].message.content or "").strip()
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             raw = await loop.run_in_executor(None, _call)
         except Exception as e:
             logger.exception("[daily-synthesis] LLM call failed")

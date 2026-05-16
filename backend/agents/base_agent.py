@@ -103,7 +103,7 @@ class BaseAgent(ABC):
             }
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             text = await loop.run_in_executor(None, functools.partial(_sync_llm_call, prompt))
         except Exception as exc:
             logger.exception(f"[{self.agent_name}] LLM call failed")
