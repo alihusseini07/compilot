@@ -9,7 +9,7 @@ Cross-signal AI that monitors competitors across public data sources and infers 
 | Backend runtime | Python 3.12, FastAPI, Uvicorn |
 | Task queue | Celery + Redis |
 | Database | PostgreSQL 16 (async via asyncpg + SQLAlchemy 2.0) |
-| AI inference | Gemma 4 26B MoE (`gemma4:26b` Ollama tag, ~14 GB RAM) on a dedicated Vultr `vc2-4c-16gb` VM running Ollama — OpenAI-compatible API, `openai` Python SDK |
+| AI inference | Gemma 4 8B (`gemma4:e4b` Ollama tag, ~9.6 GB) on a dedicated Vultr `vc2-4c-16gb` VM running Ollama — OpenAI-compatible API, `openai` Python SDK |
 | Frontend | React 18 + Vite 5, Recharts |
 | Containerization | Docker, Docker Compose (local dev) |
 | Orchestration | Kubernetes on Vultr Kubernetes Engine (VKE) |
@@ -28,7 +28,7 @@ Each scraper writes raw signal rows to the `signals` table in Postgres. Signals 
 
 A **SynthesisAgent** runs nightly at 00:00 UTC. It:
 1. Pulls all signals for each tracked company from the last N days.
-2. Calls Gemma 4 26B MoE via the Ollama instance on a dedicated Vultr VM (`OLLAMA_HOST`) using the `openai` SDK pointed at `http://<OLLAMA_HOST>:11434/v1`. The Ollama VM is on the same Vultr private network (VPC) as the K8s cluster for low-latency calls.
+2. Calls Gemma 4 8B (`gemma4:e4b`) via the Ollama instance on a dedicated Vultr VM (`OLLAMA_HOST`) using the `openai` SDK pointed at `http://<OLLAMA_HOST>:11434/v1`. The Ollama VM is on the same Vultr private network (VPC) as the K8s cluster for low-latency calls.
 3. Writes inference rows to the `inferences` table with confidence scores (high/medium/low) and the IDs of signals that support each inference.
 
 ## Folder Structure

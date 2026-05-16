@@ -46,6 +46,11 @@ spec:
                     secretKeyRef:
                       name: compilot-secrets
                       key: REDIS_URL
+                - name: OLLAMA_MODEL
+                  valueFrom:
+                    secretKeyRef:
+                      name: compilot-secrets
+                      key: OLLAMA_MODEL
                 - name: TRACKED_COMPANIES
                   value: "linear,notion,figma"
               resources:
