@@ -36,22 +36,25 @@ def _normalize(result, agent_name: str, date_range: str) -> dict:
     return result
 
 
-async def run(company: str, mode: str = "daily") -> dict:
-    logger.info(f"[orchestrator] start company={company} mode={mode}")
+async def run(company: str, mode: str = "daily", date: str = None) -> dict:
+    logger.info(f"[orchestrator] start company={company} mode={mode} date={date}")
 
     if mode == "daily":
+        date_range = f"date:{date}" if date else "last_day"
         jobs, research, tech = await asyncio.gather(
-            JobsAgent().run(company, "last_day"),
-            ResearchAgent().run(company, "last_day"),
-            TechAgent().run(company, "last_day"),
+            JobsAgent().run(company, date_range),
+            ResearchAgent().run(company, date_range),
+            TechAgent().run(company, date_range),
             return_exceptions=True,
         )
         conclusions = [
-            _normalize(jobs, "jobs", "last_day"),
-            _normalize(research, "research", "last_day"),
-            _normalize(tech, "tech", "last_day"),
+            _normalize(jobs, "jobs", date_range),
+            _normalize(research, "research", date_range),
+            _normalize(tech, "tech", date_range),
         ]
-        report = await DailySynthesisAgent().run(company, conclusions)
+        from datetime import date as date_type
+        report_date = date_type.fromisoformat(date) if date else None
+        report = await DailySynthesisAgent().run(company, conclusions, report_date=report_date)
         logger.info(f"[orchestrator] done company={company} mode=daily")
         return {"mode": "daily", "report": report, "conclusions": conclusions}
 

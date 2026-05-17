@@ -37,11 +37,11 @@ celery_app.conf.update(
 
 
 @celery_app.task(name="tasks.analyze_company")
-def analyze_company_task(company: str, mode: str = "daily"):
+def analyze_company_task(company: str, mode: str = "daily", date: str = None):
     from agents.orchestrator import run as orchestrator_run
 
     async def _run():
-        result = await orchestrator_run(company, mode)
+        result = await orchestrator_run(company, mode, date=date)
         return {"company": company, "mode": mode, "result": _summary(result)}
 
     return asyncio.run(_run())

@@ -25,6 +25,11 @@ _DAYS = {"last_day": 1, "last_7_days": 7, "last_30_days": 30}
 
 
 def _days(date_range: str) -> int:
+    if date_range.startswith("date:"):
+        from datetime import date as date_type
+        target = date_type.fromisoformat(date_range[5:])
+        today = date_type.today()
+        return max(1, (today - target).days + 1)
     return _DAYS.get(date_range, 1)
 
 

@@ -46,6 +46,7 @@ export default function GenerateReport({ competitors }) {
   const [error, setError] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [manualInput, setManualInput] = useState("");
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const pollRef = useRef(null);
   const stepRef = useRef(null);
@@ -79,7 +80,7 @@ export default function GenerateReport({ competitors }) {
     }, STEP_INTERVAL[activeTab]);
 
     try {
-      await triggerAnalysis(slug, activeTab, token);
+      await triggerAnalysis(slug, activeTab, token, activeTab === "daily" ? selectedDate : undefined);
 
       await new Promise((resolve, reject) => {
         const deadline = Date.now() + POLL_TIMEOUT;
@@ -212,6 +213,21 @@ export default function GenerateReport({ competitors }) {
           )}
         </div>
       </div>
+
+      {/* Date picker — daily only */}
+      {activeTab === "daily" && (
+        <div className="mb-8">
+          <label className="block text-xs text-zinc-400 mb-2">Report date</label>
+          <input
+            type="date"
+            value={selectedDate}
+            max={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            disabled={analyzing}
+            className="bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100 hover:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-violet-500/30 transition-all disabled:opacity-50 [color-scheme:dark]"
+          />
+        </div>
+      )}
 
       {/* Error */}
       {error && (

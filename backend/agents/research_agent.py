@@ -57,6 +57,10 @@ _DAYS = {"last_day": 1, "last_7_days": 7, "last_30_days": 30}
 
 
 def _cutoff(date_range: str) -> datetime:
+    if date_range.startswith("date:"):
+        from datetime import date as date_type
+        d = date_type.fromisoformat(date_range[5:])
+        return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
     return datetime.now(timezone.utc) - timedelta(days=_DAYS.get(date_range, 1))
 
 

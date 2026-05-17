@@ -14,9 +14,11 @@ export async function fetchHistory(company, type, limit) {
   return data.reports || [];
 }
 
-export async function triggerAnalysis(company, mode, token) {
+export async function triggerAnalysis(company, mode, token, date) {
   const headers = token ? { "Authorization": `Bearer ${token}` } : {};
-  const res = await fetch(`/analyze/${encodeURIComponent(company)}?mode=${mode}`, {
+  const params = new URLSearchParams({ mode });
+  if (date) params.set("date", date);
+  const res = await fetch(`/analyze/${encodeURIComponent(company)}?${params}`, {
     method: "POST",
     headers,
   });

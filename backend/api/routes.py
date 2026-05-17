@@ -103,7 +103,11 @@ async def remove_competitor(company: str, current_user: User = Depends(get_curre
 
 
 @router.post("/analyze/{company}")
-async def analyze(company: str, mode: str = Query("daily", pattern="^(daily|weekly|monthly)$")):
+async def analyze(
+    company: str,
+    mode: str = Query("daily", pattern="^(daily|weekly|monthly)$"),
+    date: str = Query(None),
+):
     """Trigger orchestrator. Returns Celery job_id; the actual work runs in the worker.
     For weekly/monthly, checks upfront whether enough upstream reports exist."""
     from agents.weekly_synthesis_agent import DAILY_THRESHOLD
@@ -135,7 +139,7 @@ async def analyze(company: str, mode: str = Query("daily", pattern="^(daily|week
                        f"but only {count} exist for '{company}'. Run Weekly first."
             )
 
-    task = analyze_company_task.delay(company, mode)
+    task = analyze_company_task.delay(company, mode, date)
     return {"job_id": task.id, "company": company, "mode": mode, "status": "queued"}
 
 

@@ -55,14 +55,17 @@ def _parse_response(raw: str) -> tuple[str, list[str]]:
 
 
 class DailySynthesisAgent:
-    async def run(self, company: str, conclusions: list[dict]) -> dict:
+    async def run(self, company: str, conclusions: list[dict], report_date=None) -> dict:
         logger.info(f"[daily-synthesis] start company={company} conclusions={len(conclusions)}")
         report_text, key_insights = await self._call_llm(company, conclusions)
+
+        if report_date is None:
+            report_date = datetime.now(timezone.utc).date()
 
         async with async_session() as session:
             row = DailyReport(
                 company=company,
-                report_date=datetime.now(timezone.utc).date(),
+                report_date=report_date,
                 report_text=report_text,
                 key_insights=key_insights,
                 overall_confidence=_overall_confidence(conclusions),
