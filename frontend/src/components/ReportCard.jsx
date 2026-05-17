@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Download, TrendingUp } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { cn } from "../lib/utils";
 import TrendChart from "./TrendChart";
 
@@ -136,9 +137,23 @@ export default function ReportCard({ report, type, isLatest, history = [] }) {
       {/* Body */}
       {expanded && (
         <div className="animate-fade-in">
-          <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap mb-4">
-            {report.report_text}
-          </p>
+          <div className="text-sm text-zinc-300 leading-relaxed mb-4">
+            <ReactMarkdown
+              components={{
+                p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+                strong: ({ children }) => <strong className="text-zinc-100 font-semibold">{children}</strong>,
+                em: ({ children }) => <em className="text-zinc-300 italic">{children}</em>,
+                h1: ({ children }) => <h1 className="text-base font-bold text-zinc-100 mb-2 mt-4 first:mt-0">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-sm font-bold text-zinc-100 mb-2 mt-3 first:mt-0">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-sm font-semibold text-zinc-200 mb-1.5 mt-3 first:mt-0">{children}</h3>,
+                ul: ({ children }) => <ul className="list-disc list-inside space-y-1 mb-3 text-zinc-300">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 mb-3 text-zinc-300">{children}</ol>,
+                li: ({ children }) => <li className="text-zinc-300">{children}</li>,
+              }}
+            >
+              {report.report_text}
+            </ReactMarkdown>
+          </div>
 
           {insights.length > 0 && (
             <div className="border-t border-zinc-800 pt-4">

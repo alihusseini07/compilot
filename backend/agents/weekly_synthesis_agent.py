@@ -62,10 +62,18 @@ class WeeklySynthesisAgent:
         return row.to_dict()
 
     async def _load_recent_daily(self, company: str) -> list[dict]:
+        from sqlalchemy import func
         async with async_session() as session:
+            # Most recent report ID per unique day
+            subq = (
+                select(func.max(DailyReport.id).label("max_id"))
+                .where(DailyReport.company == company)
+                .group_by(DailyReport.report_date)
+                .subquery()
+            )
             stmt = (
                 select(DailyReport)
-                .where(DailyReport.company == company)
+                .where(DailyReport.id.in_(select(subq.c.max_id)))
                 .order_by(DailyReport.report_date.desc())
                 .limit(DAILY_THRESHOLD)
             )
