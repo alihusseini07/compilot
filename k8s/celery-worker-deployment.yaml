@@ -49,6 +49,11 @@ spec:
                 secretKeyRef:
                   name: compilot-secrets
                   key: GITHUB_TOKEN
+            - name: LENS_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: compilot-secrets
+                  key: LENS_API_TOKEN
           resources:
             requests:
               cpu: "250m"

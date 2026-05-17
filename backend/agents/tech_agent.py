@@ -157,7 +157,7 @@ class TechAgent(BaseAgent):
         payload = {
             "query": {
                 "bool": {
-                    "must": [{"match": {"assignee": company}}],
+                    "must": [{"match": {"applicant.name": company}}],
                     "filter": [{"range": {"date_published": {"gte": cutoff_date}}}],
                 }
             },
@@ -165,7 +165,7 @@ class TechAgent(BaseAgent):
             "sort": [{"date_published": "desc"}],
             "include": [
                 "lens_id", "title", "abstract", "date_published",
-                "assignee", "class_cpc",
+                "applicant", "class_cpc",
             ],
         }
         try:
@@ -190,11 +190,18 @@ class TechAgent(BaseAgent):
             if not lens_id:
                 continue
             cpc = [c.get("symbol", "") for c in (patent.get("class_cpc") or []) if c.get("symbol")]
+            # title/abstract are [{lang, value}] arrays — pick English or first
+            raw_title = patent.get("title") or []
+            title = next((t["value"] for t in raw_title if t.get("lang") == "en"), None) \
+                or (raw_title[0]["value"] if raw_title else "")
+            raw_abstract = patent.get("abstract") or []
+            abstract = next((a["value"] for a in raw_abstract if a.get("lang") == "en"), None) \
+                or (raw_abstract[0]["value"] if raw_abstract else "")
             out.append({
                 "kind": "patent",
                 "lens_id": lens_id,
-                "title": patent.get("title", ""),
-                "abstract": (patent.get("abstract") or "")[:400],
+                "title": title,
+                "abstract": abstract[:400],
                 "filing_date": patent.get("date_published", ""),
                 "cpc_codes": cpc[:6],
                 "url": f"https://lens.org/lens/patent/{lens_id}",
