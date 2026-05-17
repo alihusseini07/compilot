@@ -4,165 +4,7 @@
 
 ## Core Insight
 
-No single signal tells the whole story. A new job posting is noise. But a new ML job posting + a dependency on `openai` appearing in their repo + a pricing page that added an "AI" tier — that's a product launch in 6 weeks. Compilot runs five scrapers in parallel across GitHub, news, job boards, patents, and pricing pages, then asks Gemma 4 26B MoE (running on a private Ollama VM) to reason across all of them simultaneously.
-
-## Quickstart (Local Dev)
-
-### Prerequisites
-
-- Docker + Docker Compose
-- Node 20+
-- Python 3.12+
-- A GitHub personal access token (read-only)
-- An Ollama VM running `gemma4:26b` (see [Inference server setup](#inference-server-setup) below)
-
-### 1. Clone and configure
-
-```bash
-git clone https://github.com/your-org/compilot.git
-cd compilot
-cp .env.example .env
-# Edit .env and fill in your actual keys
-```
-
-### 2. Start backend services
-
-```bash
-docker compose up -d postgres redis
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-# Apply schema
-psql $DATABASE_URL -f db/schema.sql
-# Start API
-uvicorn main:app --reload --port 8000
-# Start Celery worker (separate terminal)
-celery -A main.celery_app worker --loglevel=info
-```
-
-### 3. Start frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-# App runs at http://localhost:5173
-```
-
-### 4. Run a scrape
-
-```bash
-curl -X POST http://localhost:8000/api/run-scrape \
-  -H "Content-Type: application/json" \
-  -d '{"company": "linear"}'
-```
-
-Then synthesize:
-
-```bash
-curl -X POST http://localhost:8000/api/synthesize \
-  -H "Content-Type: application/json" \
-  -d '{"company": "linear"}'
-```
-
----
-
-## Inference Server Setup
-
-Compilot runs Gemma 4 26B MoE via Ollama on a **separate** Vultr VM, not inside the K8s cluster. This keeps GPU/RAM requirements isolated and lets you swap models without redeploying the cluster.
-
-### 1. Provision the VM
-
-- Type: `vc2-4c-16gb` (4 vCPU, 16 GB RAM — required for `gemma4:26b` at ~14 GB RAM)
-- OS: Ubuntu 24.04 LTS
-- Region: same as your VKE cluster
-- Attach it to the **same Vultr VPC** as the cluster so internal IPs route correctly
-
-### 2. Run the setup script
-
-SSH into the VM and run:
-
-```bash
-bash infra/ollama-setup.sh
-```
-
-This will:
-- Install Ollama via the official installer
-- Configure Ollama to bind on all interfaces (`OLLAMA_HOST=0.0.0.0`) so the K8s cluster can reach it
-- Pull `gemma4:26b` (~14 GB download, takes several minutes)
-- Print the VM's internal IP and confirm the model is loaded
-
-### 3. Note the internal IP
-
-The script prints the VM's internal IP at the end. Add it to your `.env`:
-
-```bash
-OLLAMA_HOST=10.x.x.x   # internal IP printed by the script
-OLLAMA_MODEL=gemma4:26b
-```
-
-And add to your K8s secret:
-
-```bash
-kubectl create secret generic compilot-secrets \
-  --from-literal=OLLAMA_HOST=10.x.x.x \
-  # ... other secrets
-```
-
-> **Important:** The K8s cluster and Ollama VM must be on the same Vultr VPC. If they are not, the synthesis agent will fail to connect to `OLLAMA_HOST`. Do not use the public IP — use the internal IP for low latency and no egress cost.
-
----
-
-## Deploy to Vultr Kubernetes Engine (VKE)
-
-### 1. Provision a VKE cluster
-
-- Node pool: 2x `vc2-2c-4gb` nodes (2 vCPU, 4 GB RAM each)
-- Kubernetes version: 1.30+
-
-### 2. Configure kubectl
-
-```bash
-# Download kubeconfig from Vultr console
-export KUBECONFIG=~/Downloads/vke-kubeconfig.yaml
-kubectl get nodes  # verify
-```
-
-### 3. Create secrets
-
-```bash
-kubectl create secret generic compilot-secrets \
-  --from-literal=OLLAMA_HOST=10.x.x.x \
-  --from-literal=DATABASE_URL=postgresql+asyncpg://... \
-  --from-literal=REDIS_URL=redis://... \
-  --from-literal=GITHUB_TOKEN=ghp_...
-```
-
-### 4. Apply manifests
-
-```bash
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/backend-deployment.yaml
-kubectl apply -f k8s/frontend-deployment.yaml
-kubectl apply -f k8s/synthesis-cronjob.yaml
-kubectl apply -f k8s/github-scraper-cronjob.yaml
-kubectl apply -f k8s/news-scraper-cronjob.yaml
-```
-
----
-
-## Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `OLLAMA_HOST` | Internal IP of the Ollama inference VM (e.g. `10.x.x.x`) |
-| `OLLAMA_MODEL` | Ollama model tag (default: `gemma4:26b`) |
-| `DATABASE_URL` | PostgreSQL connection string (asyncpg format) |
-| `REDIS_URL` | Redis connection string for Celery broker |
-| `GITHUB_TOKEN` | GitHub PAT with `public_repo` read scope |
-| `PORT` | Port for FastAPI server (default: 8000) |
-
----
+No single signal tells the whole story. A new job posting is noise. But a new ML job posting + a dependency on `openai` appearing in their repo + a pricing page that added an "AI" tier — that's a product launch in 6 weeks. Compilot fans out three scraper agents across GitHub, job boards, news/PR/pricing, and patents, then synthesizes conclusions through daily → weekly → monthly tiers using DeepSeek-V3.2.
 
 ## Architecture
 
@@ -171,11 +13,146 @@ kubectl apply -f k8s/news-scraper-cronjob.yaml
       │
       │ HTTP / REST
       ▼
-[FastAPI Backend] ──── Celery Tasks ────► [Scraper Agents x5] ──► [PostgreSQL]
+[FastAPI Backend] ──── Celery Tasks ────► [Jobs Agent    ] ──┐
+      │                                  [Research Agent ] ──┤──► [Daily Synthesis]
+      │                                  [Tech Agent     ] ──┘          │
+      │                                                           [Weekly Synthesis]
       │                                                                  │
-      │                                          [Synthesis Agent] ◄────┘
-      │                                                  │
-      │                                          [Ollama VM — Gemma 4 26B]
-      │                                                  │
-      └──────────────── GET /inferences ◄───────────────┘
+      │                                                          [Monthly Synthesis]
+      │                                                                  │
+      └──────────────── GET /reports/{company} ◄───────────── [PostgreSQL]
+                                                              (daily/weekly/monthly_reports)
 ```
+
+**Inference:** All LLM calls go to `nvidia/DeepSeek-V3.2-NVFP4` via Vultr Serverless Inference (OpenAI-compatible API). No self-hosted GPU VM required.
+
+## Quickstart (Local Dev — Docker Compose)
+
+### Prerequisites
+
+- Docker + Docker Compose
+- A GitHub personal access token (read-only, `public_repo` scope)
+- Vultr Serverless Inference credentials (`INFERENCE_API_KEY`, `INFERENCE_BASE_URL`)
+
+### 1. Clone and configure
+
+```bash
+git clone https://github.com/your-org/compilot.git
+cd compilot
+cp .env.example .env
+# Fill in INFERENCE_API_KEY, INFERENCE_BASE_URL, GITHUB_TOKEN, DATABASE_URL, REDIS_URL
+```
+
+### 2. Start all services
+
+```bash
+docker compose up --build -d
+```
+
+- Frontend: `http://localhost`
+- Backend API: `http://localhost:8000`
+
+### 3. Trigger a scrape
+
+```bash
+curl -X POST http://localhost:8000/api/run-scrape \
+  -H "Content-Type: application/json" \
+  -d '{"company": "linear"}'
+```
+
+Poll for results:
+
+```bash
+curl http://localhost:8000/reports/linear/latest
+```
+
+---
+
+## Agent Pipeline
+
+| Agent | Sources | Output |
+|-------|---------|--------|
+| Jobs Agent | Greenhouse, Lever, Workday, LinkedIn | Hiring signal conclusions |
+| Research Agent | RSS, Hacker News, pricing diffs | PR / market signal conclusions |
+| Tech Agent | GitHub, Lens.org patents | Engineering signal conclusions |
+| Daily Synthesis | 3 scraper conclusions | `daily_reports` row |
+| Weekly Synthesis | ≥7 daily reports | `weekly_reports` row |
+| Monthly Synthesis | ≥4 weekly reports | `monthly_reports` row |
+
+Synthesis tiers return **422** immediately if the required upstream history doesn't exist — no fallback scraping.
+
+---
+
+## Deploy to Vultr Kubernetes Engine (VKE)
+
+### 1. Configure kubectl
+
+```bash
+# Copy kubeconfig downloaded from Vultr console
+cp ~/Downloads/vke-*.yaml ~/.kube/config
+kubectl get nodes  # verify
+```
+
+### 2. Create secrets
+
+```bash
+kubectl create secret generic compilot-secrets \
+  --from-literal=INFERENCE_API_KEY=... \
+  --from-literal=INFERENCE_BASE_URL=... \
+  --from-literal=DATABASE_URL=postgresql+asyncpg://... \
+  --from-literal=REDIS_URL=redis://... \
+  --from-literal=GITHUB_TOKEN=ghp_...
+```
+
+### 3. Apply manifests
+
+```bash
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/backend-deployment.yaml
+kubectl apply -f k8s/frontend-deployment.yaml
+kubectl apply -f k8s/celery-worker-deployment.yaml
+kubectl apply -f k8s/daily-cronjob.yaml
+kubectl apply -f k8s/weekly-cronjob.yaml
+kubectl apply -f k8s/monthly-cronjob.yaml
+```
+
+### 4. Useful commands
+
+```bash
+kubectl get all                                        # cluster overview
+kubectl logs -f deployment/compilot-backend            # backend logs
+kubectl logs -f deployment/compilot-celery-worker      # worker logs
+kubectl get cronjobs                                   # scraper schedules
+kubectl create job --from=cronjob/daily-scraper manual-run-1  # trigger manually
+```
+
+### Docker image push (before deploy)
+
+```bash
+docker compose build
+docker tag compilot-backend:latest ahusseini07/compilot-backend:latest
+docker push ahusseini07/compilot-backend:latest
+docker tag compilot-frontend:latest ahusseini07/compilot-frontend:latest
+docker push ahusseini07/compilot-frontend:latest
+```
+
+> **Note:** K8s deployments use `imagePullPolicy: Always` — pods pull from Docker Hub on every restart.
+
+---
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `INFERENCE_API_KEY` | Vultr Serverless Inference API key |
+| `INFERENCE_BASE_URL` | Vultr Serverless Inference base URL |
+| `INFERENCE_MODEL` | Model tag (set in K8s configmap, default: `nvidia/DeepSeek-V3.2-NVFP4`) |
+| `DATABASE_URL` | PostgreSQL connection string (asyncpg format) |
+| `REDIS_URL` | Redis connection string for Celery broker |
+| `GITHUB_TOKEN` | GitHub PAT with `public_repo` read scope |
+
+---
+
+## Adding a New Route
+
+Any new route prefix added to FastAPI must also get a `location` block in `frontend/nginx.conf`, then the frontend image must be rebuilt and redeployed.
