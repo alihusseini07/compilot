@@ -1,5 +1,5 @@
 import { createContext, useContext, useRef, useState } from "react";
-import { fetchLatest, triggerAnalysis } from "./useReports";
+import { fetchHistory, triggerAnalysis } from "./useReports";
 
 const AnalysisContext = createContext(null);
 
@@ -74,9 +74,9 @@ export function AnalysisProvider({ children }) {
             return;
           }
           try {
-            const data = await fetchLatest(slug);
-            const report = data[activeTab];
-            if (report && new Date(report.created_at).getTime() > preClickTime) {
+            const reports = await fetchHistory(slug, activeTab, 50);
+            const found = reports.some(r => new Date(r.created_at).getTime() > preClickTime);
+            if (found) {
               clearInterval(pollRef.current);
               resolve();
             }

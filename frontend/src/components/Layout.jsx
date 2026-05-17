@@ -202,11 +202,9 @@ export default function Layout({
               {done && `${analyzingCompany} — ${analyzingMode} report ready`}
               {analysisError && "Analysis failed"}
             </span>
-            {(done || analysisError) && (
-              <button onClick={dismiss} className="text-zinc-600 hover:text-zinc-300 transition-colors flex-shrink-0">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <button onClick={dismiss} className="text-zinc-600 hover:text-zinc-300 transition-colors flex-shrink-0">
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           {/* Body */}
