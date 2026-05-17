@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   FileText,
@@ -9,8 +9,12 @@ import {
   Trash2,
   LogOut,
   Target,
+  X,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { useAnalysis } from "../hooks/useAnalysis";
 
 const NAV_ITEMS = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard", end: true },
@@ -28,6 +32,9 @@ export default function Layout({
   onLogout,
   outletContext,
 }) {
+  const { analyzing, statusStep, company: analyzingCompany, mode: analyzingMode, error: analysisError, done, steps, progress, dismiss } = useAnalysis();
+  const location = useLocation();
+  const onGeneratePage = location.pathname.startsWith("/generate");
   const [addOpen, setAddOpen] = useState(false);
   const [newCompany, setNewCompany] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
@@ -179,6 +186,65 @@ export default function Layout({
       <main className="flex-1 overflow-y-auto scrollbar-thin">
         <Outlet context={outletContext} />
       </main>
+
+      {/* ── Analysis Status Widget ── */}
+      {!onGeneratePage && (analyzing || done || analysisError) && (
+        <div className="fixed bottom-5 right-5 z-50 w-80 bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl shadow-black/60 overflow-hidden animate-slide-up">
+          {/* Header */}
+          <div className="flex items-center gap-2.5 px-4 py-3 border-b border-zinc-800">
+            {analyzing && (
+              <span className="w-3.5 h-3.5 border-2 border-zinc-700 border-t-violet-500 rounded-full animate-spin flex-shrink-0" />
+            )}
+            {done && <CheckCircle className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />}
+            {analysisError && <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
+            <span className="flex-1 text-xs font-medium text-zinc-200 truncate">
+              {analyzing && `Analyzing ${analyzingCompany}`}
+              {done && `${analyzingCompany} — ${analyzingMode} report ready`}
+              {analysisError && "Analysis failed"}
+            </span>
+            {(done || analysisError) && (
+              <button onClick={dismiss} className="text-zinc-600 hover:text-zinc-300 transition-colors flex-shrink-0">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Body */}
+          <div className="px-4 py-3">
+            {analyzing && (
+              <>
+                <p className="text-xs text-zinc-400 mb-2.5">{steps[statusStep]}</p>
+                <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-violet-500 rounded-full transition-all duration-1000"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-1.5">
+                  <span className="text-[10px] text-zinc-600 font-mono capitalize">{analyzingMode}</span>
+                  <span className="text-[10px] text-zinc-600 font-mono">
+                    Step {statusStep + 1}/{steps.length}
+                  </span>
+                </div>
+              </>
+            )}
+            {done && (
+              <button
+                onClick={() => {
+                  navigate(`/reports/${encodeURIComponent(analyzingCompany)}`);
+                  dismiss();
+                }}
+                className="text-xs text-violet-400 hover:text-violet-300 transition-colors font-medium"
+              >
+                View report →
+              </button>
+            )}
+            {analysisError && (
+              <p className="text-xs text-red-400">{analysisError}</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Add Competitor Dialog ── */}
       {addOpen && (

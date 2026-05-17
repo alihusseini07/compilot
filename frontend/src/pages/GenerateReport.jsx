@@ -1,119 +1,44 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Zap, ChevronDown } from "lucide-react";
 import { cn } from "../lib/utils";
-import { triggerAnalysis, fetchLatest } from "../hooks/useReports";
+import { useAnalysis, STATUS_STEPS } from "../hooks/useAnalysis";
 import { useAuth } from "../hooks/useAuth";
 
 const TABS = ["daily", "weekly", "monthly"];
-
-const STATUS_STEPS = {
-  daily: [
-    "Queuing analysis…",
-    "Running jobs, research & tech agents…",
-    "Scraping data sources…",
-    "Calling LLM for domain conclusions…",
-    "Daily synthesis agent reasoning…",
-    "Writing report to database…",
-  ],
-  weekly: [
-    "Queuing analysis…",
-    "Checking daily report history…",
-    "Running weekly synthesis…",
-    "Writing report to database…",
-  ],
-  monthly: [
-    "Queuing analysis…",
-    "Checking weekly report history…",
-    "Running monthly synthesis…",
-    "Writing report to database…",
-  ],
-};
-
-const STEP_INTERVAL = { daily: 18000, weekly: 25000, monthly: 25000 };
-const POLL_INTERVAL = 5000;
-const POLL_TIMEOUT = 900000;
 
 export default function GenerateReport({ competitors }) {
   const { company: paramCompany } = useParams();
   const navigate = useNavigate();
   const { token } = useAuth();
+  const { analyzing, statusStep, company: analyzingCompany, mode: analyzingMode, done, dismiss, startAnalysis, steps, progress } = useAnalysis();
 
   const [selectedCompany, setSelectedCompany] = useState(paramCompany ?? "");
   const [activeTab, setActiveTab] = useState("daily");
-  const [analyzing, setAnalyzing] = useState(false);
-  const [statusStep, setStatusStep] = useState(0);
-  const [error, setError] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [manualInput, setManualInput] = useState("");
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
-
-  const pollRef = useRef(null);
-  const stepRef = useRef(null);
 
   useEffect(() => {
     if (paramCompany) setSelectedCompany(paramCompany);
   }, [paramCompany]);
 
+  // Auto-navigate when done and user is on this page
   useEffect(() => {
-    return () => {
-      clearInterval(pollRef.current);
-      clearInterval(stepRef.current);
-    };
-  }, []);
+    if (done && analyzingCompany) {
+      dismiss();
+      navigate(`/reports/${encodeURIComponent(analyzingCompany)}`);
+    }
+  }, [done]);
 
   const slug = selectedCompany.trim().toLowerCase();
+  const currentSteps = STATUS_STEPS[analyzingMode] || STATUS_STEPS[activeTab];
+  const currentProgress = analyzing ? ((statusStep + 1) / currentSteps.length) * 100 : 0;
 
   async function handleAnalyze() {
     if (!slug || analyzing) return;
-    setError("");
-    setAnalyzing(true);
-    setStatusStep(0);
-
-    const preClickTime = Date.now();
-    const steps = STATUS_STEPS[activeTab];
-    let step = 0;
-
-    stepRef.current = setInterval(() => {
-      step = Math.min(step + 1, steps.length - 1);
-      setStatusStep(step);
-    }, STEP_INTERVAL[activeTab]);
-
-    try {
-      await triggerAnalysis(slug, activeTab, token, activeTab === "daily" ? selectedDate : undefined);
-
-      await new Promise((resolve, reject) => {
-        const deadline = Date.now() + POLL_TIMEOUT;
-        pollRef.current = setInterval(async () => {
-          if (Date.now() > deadline) {
-            clearInterval(pollRef.current);
-            reject(new Error("Analysis timed out — check Past Reports in a moment."));
-            return;
-          }
-          try {
-            const data = await fetchLatest(slug);
-            const report = data[activeTab];
-            if (report && new Date(report.created_at).getTime() > preClickTime) {
-              clearInterval(pollRef.current);
-              resolve();
-            }
-          } catch {
-            /* keep polling */
-          }
-        }, POLL_INTERVAL);
-      });
-
-      navigate(`/reports/${encodeURIComponent(slug)}`);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      clearInterval(stepRef.current);
-      setAnalyzing(false);
-    }
+    await startAnalysis(slug, activeTab, token, activeTab === "daily" ? selectedDate : undefined);
   }
-
-  const steps = STATUS_STEPS[activeTab];
-  const progress = analyzing ? ((statusStep + 1) / steps.length) * 100 : 0;
 
   return (
     <div className="p-8 max-w-2xl">
@@ -229,32 +154,25 @@ export default function GenerateReport({ competitors }) {
         </div>
       )}
 
-      {/* Error */}
-      {error && (
-        <div className="mb-6 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400">
-          {error}
-        </div>
-      )}
-
-      {/* Progress */}
+      {/* Progress — show whenever any analysis is running */}
       {analyzing && (
         <div className="mb-6 bg-zinc-900 border border-zinc-800 rounded-xl p-4 animate-fade-in">
           <div className="flex items-center gap-2 mb-3">
             <span className="w-3 h-3 border border-zinc-700 border-t-violet-500 rounded-full animate-spin flex-shrink-0" />
-            <span className="text-sm text-zinc-300">{steps[statusStep]}</span>
+            <span className="text-sm text-zinc-300">{currentSteps[statusStep]}</span>
           </div>
           <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
             <div
               className="h-full bg-violet-500 rounded-full transition-all duration-1000"
-              style={{ width: `${progress}%` }}
+              style={{ width: `${currentProgress}%` }}
             />
           </div>
           <div className="flex justify-between mt-2">
-            <span className="text-[10px] text-zinc-700 font-mono">
-              Step {statusStep + 1} of {steps.length}
+            <span className="text-[10px] text-zinc-700 font-mono capitalize">
+              {analyzingCompany} · {analyzingMode}
             </span>
             <span className="text-[10px] text-zinc-700 font-mono">
-              {Math.round(progress)}%
+              Step {statusStep + 1} of {currentSteps.length}
             </span>
           </div>
         </div>
@@ -269,7 +187,7 @@ export default function GenerateReport({ competitors }) {
         {analyzing ? (
           <>
             <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            Analyzing {slug}…
+            Analyzing {analyzingCompany}…
           </>
         ) : (
           <>

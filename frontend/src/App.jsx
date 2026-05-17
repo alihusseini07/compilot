@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useOutletContext } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
 import { useCompetitors } from "./hooks/useCompetitors";
+import { AnalysisProvider } from "./hooks/useAnalysis";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -20,15 +21,17 @@ function ProtectedLayout() {
   }
 
   return (
-    <Layout
-      user={user}
-      token={token}
-      competitors={competitors}
-      onAddCompetitor={addCompetitor}
-      onRemoveCompetitor={removeCompetitor}
-      onLogout={logout}
-      outletContext={{ competitors, token }}
-    />
+    <AnalysisProvider>
+      <Layout
+        user={user}
+        token={token}
+        competitors={competitors}
+        onAddCompetitor={addCompetitor}
+        onRemoveCompetitor={removeCompetitor}
+        onLogout={logout}
+        outletContext={{ competitors, token }}
+      />
+    </AnalysisProvider>
   );
 }
 
