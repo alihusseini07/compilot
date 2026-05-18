@@ -28,8 +28,8 @@ const CONFIDENCE_STYLES = {
 };
 
 const TYPE_STYLES = {
-  daily: "bg-violet-500/10 text-violet-400 border border-violet-500/20",
-  weekly: "bg-blue-500/10 text-blue-400 border border-blue-500/20",
+  daily: "bg-sky-400/10 text-sky-400 border border-sky-400/20",
+  weekly: "bg-sky-400/10 text-sky-400 border border-sky-400/20",
   monthly: "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20",
 };
 
@@ -69,7 +69,7 @@ export default function ReportCard({ report, type, isLatest, history = [] }) {
       className={cn(
         "bg-zinc-900 border rounded-xl p-5 transition-all duration-200",
         isLatest
-          ? "border-violet-500/30 shadow-[0_0_20px_rgba(139,92,246,0.08)]"
+          ? "border-sky-400/30 shadow-[0_0_20px_rgba(139,92,246,0.08)]"
           : "border-zinc-800 hover:border-zinc-700"
       )}
     >
@@ -91,7 +91,7 @@ export default function ReportCard({ report, type, isLatest, history = [] }) {
             </span>
           )}
           {isLatest && (
-            <span className="px-2 py-0.5 rounded-md text-xs font-mono bg-violet-500/10 text-violet-300 border border-violet-500/20">
+            <span className="px-2 py-0.5 rounded-md text-xs font-mono bg-sky-400/10 text-blue-300 border border-sky-400/20">
               latest
             </span>
           )}
@@ -104,7 +104,7 @@ export default function ReportCard({ report, type, isLatest, history = [] }) {
               className={cn(
                 "p-1.5 rounded-md transition-colors text-xs flex items-center gap-1",
                 showTrend
-                  ? "bg-violet-500/10 text-violet-400"
+                  ? "bg-sky-400/10 text-sky-400"
                   : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
               )}
               title="Toggle trend chart"
@@ -163,7 +163,7 @@ export default function ReportCard({ report, type, isLatest, history = [] }) {
               <ul className="space-y-2">
                 {insights.map((insight, i) => (
                   <li key={i} className="flex gap-2.5 text-sm text-zinc-400">
-                    <span className="text-violet-500 mt-0.5 flex-shrink-0">›</span>
+                    <span className="text-blue-500 mt-0.5 flex-shrink-0">›</span>
                     <span>{insight}</span>
                   </li>
                 ))}
@@ -176,7 +176,7 @@ export default function ReportCard({ report, type, isLatest, history = [] }) {
       {!expanded && (
         <button
           onClick={() => setExpanded(true)}
-          className="text-xs text-zinc-600 hover:text-violet-400 transition-colors"
+          className="text-xs text-zinc-600 hover:text-sky-400 transition-colors"
         >
           Read full report →
         </button>

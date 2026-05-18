@@ -87,10 +87,10 @@ function CompetitorCard({ competitor, token }) {
         <button
           onClick={handleQuickAnalyze}
           disabled={analyzing}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-violet-500/10 hover:text-violet-300 text-zinc-500 border border-zinc-700 hover:border-violet-500/30 transition-all disabled:opacity-50"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-blue-600/10 hover:text-blue-300 text-zinc-500 border border-zinc-700 hover:border-sky-400/30 transition-all disabled:opacity-50"
         >
           {analyzing ? (
-            <span className="w-3 h-3 border border-zinc-500 border-t-violet-400 rounded-full animate-spin" />
+            <span className="w-3 h-3 border border-zinc-500 border-t-blue-400 rounded-full animate-spin" />
           ) : (
             <Zap className="w-3 h-3" />
           )}
@@ -131,7 +131,7 @@ function CompetitorCard({ competitor, token }) {
           <Clock className="w-3 h-3" />
           <RelativeTime isoString={competitor.added_at} />
         </div>
-        <span className="text-xs text-zinc-700 group-hover:text-violet-400 transition-colors flex items-center gap-1">
+        <span className="text-xs text-zinc-700 group-hover:text-sky-400 transition-colors flex items-center gap-1">
           View reports <ArrowRight className="w-3 h-3" />
         </span>
       </div>

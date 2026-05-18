@@ -38,7 +38,7 @@ function CompanyPicker({ value, onChange, competitors, placeholder }) {
           ))}
           <div className="border-t border-zinc-800 px-3 py-2">
             <input
-              className="w-full bg-zinc-800/80 rounded-lg px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-violet-500/30 font-mono"
+              className="w-full bg-zinc-800/80 rounded-lg px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500/30 font-mono"
               placeholder="Type a name…"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && e.target.value.trim()) {
@@ -94,7 +94,7 @@ function CompanyColumn({ company, activeTab }) {
 
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-zinc-600 py-4">
-          <span className="w-3 h-3 border border-zinc-700 border-t-violet-500 rounded-full animate-spin" />
+          <span className="w-3 h-3 border border-zinc-700 border-t-blue-500 rounded-full animate-spin" />
           Loading…
         </div>
       ) : allReports.length === 0 ? (

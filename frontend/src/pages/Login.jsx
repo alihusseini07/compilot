@@ -35,7 +35,7 @@ export default function Login() {
     <div className="min-h-screen bg-zinc-950 dot-grid flex items-center justify-center p-4">
       {/* Ambient glow */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="w-96 h-96 bg-violet-500/5 rounded-full blur-3xl" />
+        <div className="w-96 h-96 bg-sky-400/5 rounded-full blur-3xl" />
       </div>
 
       <div className="relative w-full max-w-sm animate-slide-up">
@@ -70,7 +70,7 @@ export default function Login() {
                 type="email"
                 autoComplete="email"
                 required
-                className="w-full bg-zinc-800/80 border border-zinc-700 rounded-lg px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-violet-500/70 focus:ring-1 focus:ring-violet-500/20 transition-all"
+                className="w-full bg-zinc-800/80 border border-zinc-700 rounded-lg px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-sky-400/70 focus:ring-1 focus:ring-blue-500/20 transition-all"
                 placeholder="you@company.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -85,7 +85,7 @@ export default function Login() {
                   type={showPass ? "text" : "password"}
                   autoComplete="current-password"
                   required
-                  className="w-full bg-zinc-800/80 border border-zinc-700 rounded-lg px-3.5 py-2.5 pr-10 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-violet-500/70 focus:ring-1 focus:ring-violet-500/20 transition-all"
+                  className="w-full bg-zinc-800/80 border border-zinc-700 rounded-lg px-3.5 py-2.5 pr-10 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-sky-400/70 focus:ring-1 focus:ring-blue-500/20 transition-all"
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -110,7 +110,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading || !email || !password}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all mt-2"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all mt-2"
             >
               {loading ? (
                 <>
@@ -128,7 +128,7 @@ export default function Login() {
 
           <p className="text-xs text-zinc-600 text-center mt-5">
             No account?{" "}
-            <Link to="/register" className="text-violet-400 hover:text-violet-300 transition-colors">
+            <Link to="/register" className="text-sky-400 hover:text-blue-300 transition-colors">
               Create one →
             </Link>
           </p>

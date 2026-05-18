@@ -83,7 +83,7 @@ export default function GenerateReport({ competitors }) {
               ))}
               <div className="border-t border-zinc-800 px-3 py-2">
                 <input
-                  className="w-full bg-zinc-800/80 rounded-lg px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-violet-500/30 font-mono"
+                  className="w-full bg-zinc-800/80 rounded-lg px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500/30 font-mono"
                   placeholder="Or type a company name…"
                   value={manualInput}
                   onChange={(e) => setManualInput(e.target.value)}
@@ -149,7 +149,7 @@ export default function GenerateReport({ competitors }) {
             max={new Date().toISOString().slice(0, 10)}
             onChange={(e) => setSelectedDate(e.target.value)}
             disabled={analyzing}
-            className="bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100 hover:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-violet-500/30 transition-all disabled:opacity-50 [color-scheme:dark]"
+            className="bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100 hover:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500/30 transition-all disabled:opacity-50 [color-scheme:dark]"
           />
         </div>
       )}
@@ -158,12 +158,12 @@ export default function GenerateReport({ competitors }) {
       {analyzing && (
         <div className="mb-6 bg-zinc-900 border border-zinc-800 rounded-xl p-4 animate-fade-in">
           <div className="flex items-center gap-2 mb-3">
-            <span className="w-3 h-3 border border-zinc-700 border-t-violet-500 rounded-full animate-spin flex-shrink-0" />
+            <span className="w-3 h-3 border border-zinc-700 border-t-blue-500 rounded-full animate-spin flex-shrink-0" />
             <span className="text-sm text-zinc-300">{currentSteps[statusStep]}</span>
           </div>
           <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
             <div
-              className="h-full bg-violet-500 rounded-full transition-all duration-1000"
+              className="h-full bg-sky-400 rounded-full transition-all duration-1000"
               style={{ width: `${currentProgress}%` }}
             />
           </div>
@@ -182,7 +182,7 @@ export default function GenerateReport({ competitors }) {
       <button
         onClick={handleAnalyze}
         disabled={!slug || analyzing}
-        className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-violet-500/10 hover:shadow-violet-500/20"
+        className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-700/10 hover:shadow-blue-700/20"
       >
         {analyzing ? (
           <>
