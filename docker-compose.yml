@@ -46,7 +46,7 @@ services:
     build: ./frontend
     container_name: compilot-frontend
     ports:
-      - "80:80"
+      - "8080:80"
     depends_on:
       - backend
     restart: unless-stopped

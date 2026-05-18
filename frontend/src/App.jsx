@@ -3,6 +3,7 @@ import { useAuth } from "./hooks/useAuth";
 import { useCompetitors } from "./hooks/useCompetitors";
 import { AnalysisProvider } from "./hooks/useAnalysis";
 import Layout from "./components/Layout";
+import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
@@ -38,11 +39,12 @@ function ProtectedLayout() {
 export default function App() {
   return (
     <Routes>
+      <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
 
       <Route element={<ProtectedLayout />}>
-        <Route index element={<DashboardPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/reports" element={<PastReportsPage />} />
         <Route path="/reports/:company" element={<PastReportsPage />} />
         <Route path="/generate" element={<GeneratePage />} />

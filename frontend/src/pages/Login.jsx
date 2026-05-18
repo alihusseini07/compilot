@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Target, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, ArrowRight } from "lucide-react";
+import logo from "../assets/logo.png";
 import { useAuth } from "../hooks/useAuth";
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from?.pathname ?? "/";
+  const from = location.state?.from?.pathname ?? "/dashboard";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -41,8 +42,8 @@ export default function Login() {
         {/* Logo mark */}
         <div className="flex justify-center mb-8">
           <div className="flex flex-col items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center">
-              <Target className="w-6 h-6 text-violet-400" />
+            <div className="w-20 h-20">
+              <img src={logo} alt="Compilot" className="w-full h-full object-contain" />
             </div>
             <div className="text-center">
               <h1 className="text-lg font-bold text-zinc-100 font-display tracking-tight">

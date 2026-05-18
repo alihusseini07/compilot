@@ -8,16 +8,16 @@ import {
   Plus,
   Trash2,
   LogOut,
-  Target,
   X,
   CheckCircle,
   AlertCircle,
 } from "lucide-react";
+import logo from "../assets/logo.png";
 import { cn } from "../lib/utils";
 import { useAnalysis } from "../hooks/useAnalysis";
 
 const NAV_ITEMS = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard", end: true },
+  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard", end: true },
   { to: "/reports", icon: FileText, label: "Past Reports", end: false },
   { to: "/generate", icon: Zap, label: "Generate", end: false },
   { to: "/compare", icon: GitCompare, label: "Compare", end: false },
@@ -67,8 +67,8 @@ export default function Layout({
         {/* Logo */}
         <div className="px-4 py-4 border-b border-zinc-800/70">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/30 flex items-center justify-center flex-shrink-0">
-              <Target className="w-3.5 h-3.5 text-violet-400" />
+            <div className="w-10 h-10 flex-shrink-0">
+              <img src={logo} alt="Compilot" className="w-full h-full object-contain" />
             </div>
             <div className="min-w-0">
               <span className="block text-sm font-bold tracking-tight text-zinc-100 font-display">

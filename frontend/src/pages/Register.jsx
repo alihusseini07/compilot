@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Target, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, ArrowRight } from "lucide-react";
+import logo from "../assets/logo.png";
 import { useAuth } from "../hooks/useAuth";
 
 export default function Register() {
@@ -31,7 +32,7 @@ export default function Register() {
     setError("");
     try {
       await register(email, password);
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -48,8 +49,8 @@ export default function Register() {
       <div className="relative w-full max-w-sm animate-slide-up">
         <div className="flex justify-center mb-8">
           <div className="flex flex-col items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center">
-              <Target className="w-6 h-6 text-violet-400" />
+            <div className="w-20 h-20">
+              <img src={logo} alt="Compilot" className="w-full h-full object-contain" />
             </div>
             <div className="text-center">
               <h1 className="text-lg font-bold text-zinc-100 font-display tracking-tight">
