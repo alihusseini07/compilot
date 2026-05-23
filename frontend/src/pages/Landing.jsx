@@ -4,6 +4,7 @@ import logo from "../assets/logo.png";
 import { useAuth } from "../hooks/useAuth";
 import { SplineScene } from "../components/ui/splite";
 import { Spotlight } from "../components/ui/spotlight";
+import { EtherealShadow } from "../components/ui/etheral-shadow";
 
 const features = [
   {
@@ -32,7 +33,17 @@ export default function Landing() {
   const { isAuthenticated } = useAuth();
 
   return (
-    <div className="bg-zinc-950 dot-grid text-zinc-100">
+    <div className="bg-zinc-950 text-zinc-100">
+      {/* Single continuous background — fixed so it spans all sections */}
+      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }}>
+        <EtherealShadow
+          color="rgba(59, 130, 246, 0.18)"
+          animation={{ scale: 60, speed: 40 }}
+          noise={{ opacity: 0.4, scale: 1.2 }}
+          sizing="fill"
+          style={{ width: '100%', height: '100%' }}
+        />
+      </div>
       {/* Nav */}
       <nav className="fixed top-0 inset-x-0 z-50 border-b border-zinc-800/60 bg-zinc-950/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
@@ -68,13 +79,10 @@ export default function Landing() {
       </nav>
 
       {/* PAGE 1 — Logo + tagline */}
-      <section className="min-h-screen flex flex-col items-center justify-center text-center px-6 relative overflow-hidden">
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-[500px] h-[500px] bg-blue-700/8 rounded-full blur-3xl" />
-        </div>
+      <section className="min-h-screen flex flex-col items-center justify-center text-center px-6 relative">
         <div className="relative flex flex-col items-center gap-6">
           <img src={logo} alt="Compilot" className="w-24 h-24 object-contain" />
-          <h1 className="text-6xl sm:text-7xl md:text-8xl font-bold tracking-tight">
+          <h1 className="text-6xl sm:text-7xl md:text-8xl font-bold tracking-tight font-display">
             Compilot
           </h1>
           <p className="text-lg sm:text-xl text-zinc-400 max-w-sm">
@@ -112,7 +120,7 @@ export default function Landing() {
       </section>
 
       {/* PAGE 2 — Robot + what it does */}
-      <section className="min-h-screen flex items-center px-6 relative overflow-hidden">
+      <section className="min-h-screen flex items-center px-6 relative">
         <Spotlight className="-top-40 left-0 md:left-60 md:-top-20" fill="white" />
         <div className="max-w-6xl mx-auto w-full flex flex-col md:flex-row items-center gap-12 py-24">
           {/* Right: Spline robot — shown first on mobile via order */}
@@ -125,7 +133,7 @@ export default function Landing() {
           {/* Left: copy */}
           <div className="flex-1 relative z-10 order-2 md:order-1">
             <p className="text-xs text-sky-400 font-mono tracking-widest uppercase mb-4">How it works</p>
-            <h2 className="text-4xl sm:text-5xl font-bold tracking-tight leading-tight mb-6">
+            <h2 className="text-4xl sm:text-5xl font-bold tracking-tight leading-tight mb-6 font-display">
               Your AI-powered<br />
               <span className="text-sky-400">intelligence analyst</span>
             </h2>
@@ -140,11 +148,11 @@ export default function Landing() {
       </section>
 
       {/* PAGE 3 — Core features */}
-      <section className="min-h-screen flex flex-col justify-center px-6 py-24 border-t border-zinc-800/60">
-        <div className="max-w-6xl mx-auto w-full">
+      <section className="min-h-screen flex flex-col justify-center px-6 py-24 relative">
+        <div className="max-w-6xl mx-auto w-full relative z-10">
           <div className="text-center mb-16">
             <p className="text-xs text-sky-400 font-mono tracking-widest uppercase mb-3">Capabilities</p>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight font-display">
               Every signal that matters
             </h2>
           </div>
@@ -183,6 +191,7 @@ export default function Landing() {
       </section>
 
       {/* Footer */}
+
       <footer className="border-t border-zinc-800/60 py-6 px-6">
         <div className="max-w-6xl mx-auto flex items-center justify-between text-xs text-zinc-600">
           <div className="flex items-center gap-2">

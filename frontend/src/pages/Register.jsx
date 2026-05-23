@@ -41,7 +41,7 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 dot-grid flex items-center justify-center p-4">
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div className="w-96 h-96 bg-sky-400/5 rounded-full blur-3xl" />
       </div>

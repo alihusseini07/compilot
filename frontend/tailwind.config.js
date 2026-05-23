@@ -4,9 +4,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["DM Sans", "system-ui", "sans-serif"],
+        sans: ["Instrument Sans", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "monospace"],
-        display: ["Syne", "system-ui", "sans-serif"],
+        display: ["Bricolage Grotesque", "system-ui", "sans-serif"],
       },
       animation: {
         "fade-in": "fadeIn 0.2s ease-out",
