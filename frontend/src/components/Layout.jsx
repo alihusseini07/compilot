@@ -1,20 +1,13 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard,
-  FileText,
-  Zap,
-  GitCompare,
-  Plus,
-  Trash2,
-  LogOut,
-  X,
-  CheckCircle,
-  AlertCircle,
+  LayoutDashboard, FileText, Zap, GitCompare, Plus, Trash2,
+  LogOut, X, CheckCircle, AlertCircle,
 } from "lucide-react";
 import logo from "../assets/logo.png";
 import { cn } from "../lib/utils";
 import { useAnalysis } from "../hooks/useAnalysis";
+import { EtherealShadow } from "./ui/etheral-shadow";
 
 const NAV_ITEMS = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard", end: true },
@@ -24,13 +17,7 @@ const NAV_ITEMS = [
 ];
 
 export default function Layout({
-  user,
-  token,
-  competitors,
-  onAddCompetitor,
-  onRemoveCompetitor,
-  onLogout,
-  outletContext,
+  user, token, competitors, onAddCompetitor, onRemoveCompetitor, onLogout, outletContext,
 }) {
   const { analyzing, statusStep, company: analyzingCompany, mode: analyzingMode, error: analysisError, done, steps, progress, dismiss } = useAnalysis();
   const location = useLocation();
@@ -61,22 +48,29 @@ export default function Layout({
   }
 
   return (
-    <div className="flex h-screen bg-zinc-950 overflow-hidden">
+    <div className="flex h-screen bg-white overflow-hidden">
+      {/* Fixed ethereal background */}
+      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }}>
+        <EtherealShadow
+          color="rgba(59, 130, 246, 0.18)"
+          animation={{ scale: 60, speed: 40 }}
+          noise={{ opacity: 0.4, scale: 1.2 }}
+          sizing="fill"
+          style={{ width: "100%", height: "100%" }}
+        />
+      </div>
+
       {/* ── Sidebar ── */}
-      <aside className="w-60 flex-shrink-0 flex flex-col border-r border-zinc-800/70 bg-[#0c0c0e]">
+      <aside className="relative z-10 w-60 flex-shrink-0 flex flex-col border-r border-zinc-200/70 bg-white/80 backdrop-blur-md">
         {/* Logo */}
-        <div className="px-4 py-4 border-b border-zinc-800/70">
+        <div className="px-4 py-4 border-b border-zinc-200/70">
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 flex-shrink-0">
+            <div className="w-9 h-9 flex-shrink-0">
               <img src={logo} alt="Compilot" className="w-full h-full object-contain" />
             </div>
             <div className="min-w-0">
-              <span className="block text-sm font-bold tracking-tight text-zinc-100 font-display">
-                Compilot
-              </span>
-              <span className="block text-[9px] text-zinc-600 font-mono leading-none tracking-[0.15em] uppercase">
-                Intelligence Radar
-              </span>
+              <span className="block text-sm font-bold tracking-tight text-zinc-900 font-display">Compilot</span>
+              <span className="block text-[9px] text-zinc-400 font-mono leading-none tracking-[0.15em] uppercase">Intelligence Radar</span>
             </div>
           </div>
         </div>
@@ -92,19 +86,14 @@ export default function Layout({
                 cn(
                   "flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-all duration-150",
                   isActive
-                    ? "bg-sky-400/10 text-blue-300 font-medium"
-                    : "text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/50"
+                    ? "bg-blue-50 text-blue-600 font-medium"
+                    : "text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100/60"
                 )
               }
             >
               {({ isActive }) => (
                 <>
-                  <Icon
-                    className={cn(
-                      "w-4 h-4 flex-shrink-0",
-                      isActive ? "text-sky-400" : "text-zinc-600"
-                    )}
-                  />
+                  <Icon className={cn("w-4 h-4 flex-shrink-0", isActive ? "text-blue-500" : "text-zinc-400")} />
                   {label}
                 </>
               )}
@@ -112,18 +101,15 @@ export default function Layout({
           ))}
         </nav>
 
-        {/* Divider */}
-        <div className="mx-3 border-t border-zinc-800/50" />
+        <div className="mx-3 border-t border-zinc-200/60" />
 
         {/* Competitors list */}
         <div className="flex-1 flex flex-col min-h-0 px-2 py-3">
           <div className="flex items-center justify-between px-2 mb-2">
-            <span className="text-[9px] font-mono text-zinc-600 uppercase tracking-[0.15em]">
-              Competitors
-            </span>
+            <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-[0.15em]">Competitors</span>
             <button
               onClick={() => setAddOpen(true)}
-              className="w-5 h-5 rounded flex items-center justify-center text-zinc-600 hover:text-sky-400 hover:bg-blue-600/10 transition-all"
+              className="w-5 h-5 rounded flex items-center justify-center text-zinc-400 hover:text-blue-500 hover:bg-blue-50 transition-all"
               title="Add competitor"
             >
               <Plus className="w-3 h-3" />
@@ -132,29 +118,26 @@ export default function Layout({
 
           <div className="flex-1 overflow-y-auto scrollbar-thin space-y-0.5 min-h-0">
             {competitors.length === 0 ? (
-              <p className="text-xs text-zinc-700 px-2 py-1 italic">No competitors saved yet</p>
+              <p className="text-xs text-zinc-400 px-2 py-1 italic">No competitors saved yet</p>
             ) : (
               competitors.map((c) => (
                 <div
                   key={c.company}
-                  className="group flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-all"
+                  className="group flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-zinc-100/60 cursor-pointer transition-all"
                   onMouseEnter={() => setHovered(c.company)}
                   onMouseLeave={() => setHovered(null)}
                   onClick={() => navigate(`/reports/${encodeURIComponent(c.company)}`)}
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-1 h-1 rounded-full bg-sky-400/50 flex-shrink-0" />
-                    <span className="text-xs text-zinc-400 truncate group-hover:text-zinc-200 transition-colors">
+                    <div className="w-1 h-1 rounded-full bg-blue-400/60 flex-shrink-0" />
+                    <span className="text-xs text-zinc-500 truncate group-hover:text-zinc-800 transition-colors">
                       {c.display_name || c.company}
                     </span>
                   </div>
                   {hovered === c.company && (
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRemoveCompetitor(c.company);
-                      }}
-                      className="flex-shrink-0 text-zinc-700 hover:text-red-400 transition-colors ml-1"
+                      onClick={(e) => { e.stopPropagation(); onRemoveCompetitor(c.company); }}
+                      className="flex-shrink-0 text-zinc-400 hover:text-red-500 transition-colors ml-1"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
@@ -166,15 +149,15 @@ export default function Layout({
         </div>
 
         {/* User + logout */}
-        <div className="px-3 py-3 border-t border-zinc-800/70">
+        <div className="px-3 py-3 border-t border-zinc-200/60">
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] text-zinc-500 truncate font-mono">{user?.email ?? "—"}</p>
+              <p className="text-[11px] text-zinc-400 truncate font-mono">{user?.email ?? "—"}</p>
             </div>
             <button
               onClick={onLogout}
               title="Sign out"
-              className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-all"
+              className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-all"
             >
               <LogOut className="w-3.5 h-3.5" />
             </button>
@@ -183,63 +166,48 @@ export default function Layout({
       </aside>
 
       {/* ── Main content ── */}
-      <main className="flex-1 overflow-y-auto scrollbar-thin">
+      <main className="relative z-10 flex-1 overflow-y-auto scrollbar-thin">
         <Outlet context={outletContext} />
       </main>
 
       {/* ── Analysis Status Widget ── */}
       {!onGeneratePage && (analyzing || done || analysisError) && (
-        <div className="fixed bottom-5 right-5 z-50 w-80 bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl shadow-black/60 overflow-hidden animate-slide-up">
-          {/* Header */}
-          <div className="flex items-center gap-2.5 px-4 py-3 border-b border-zinc-800">
-            {analyzing && (
-              <span className="w-3.5 h-3.5 border-2 border-zinc-700 border-t-blue-500 rounded-full animate-spin flex-shrink-0" />
-            )}
-            {done && <CheckCircle className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />}
-            {analysisError && <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
-            <span className="flex-1 text-xs font-medium text-zinc-200 truncate">
+        <div className="fixed bottom-5 right-5 z-50 w-80 bg-white/90 backdrop-blur-md border border-zinc-200 rounded-2xl shadow-xl shadow-zinc-200/60 overflow-hidden">
+          <div className="flex items-center gap-2.5 px-4 py-3 border-b border-zinc-100">
+            {analyzing && <span className="w-3.5 h-3.5 border-2 border-zinc-200 border-t-blue-500 rounded-full animate-spin flex-shrink-0" />}
+            {done && <CheckCircle className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />}
+            {analysisError && <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />}
+            <span className="flex-1 text-xs font-medium text-zinc-700 truncate">
               {analyzing && `Analyzing ${analyzingCompany}`}
               {done && `${analyzingCompany} — ${analyzingMode} report ready`}
               {analysisError && "Analysis failed"}
             </span>
-            <button onClick={dismiss} className="text-zinc-600 hover:text-zinc-300 transition-colors flex-shrink-0">
+            <button onClick={dismiss} className="text-zinc-400 hover:text-zinc-600 transition-colors flex-shrink-0">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
-
-          {/* Body */}
           <div className="px-4 py-3">
             {analyzing && (
               <>
-                <p className="text-xs text-zinc-400 mb-2.5">{steps[statusStep]}</p>
-                <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-sky-400 rounded-full transition-all duration-1000"
-                    style={{ width: `${progress}%` }}
-                  />
+                <p className="text-xs text-zinc-500 mb-2.5">{steps[statusStep]}</p>
+                <div className="h-1 bg-zinc-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-500 rounded-full transition-all duration-1000" style={{ width: `${progress}%` }} />
                 </div>
                 <div className="flex justify-between mt-1.5">
-                  <span className="text-[10px] text-zinc-600 font-mono capitalize">{analyzingMode}</span>
-                  <span className="text-[10px] text-zinc-600 font-mono">
-                    Step {statusStep + 1}/{steps.length}
-                  </span>
+                  <span className="text-[10px] text-zinc-400 font-mono capitalize">{analyzingMode}</span>
+                  <span className="text-[10px] text-zinc-400 font-mono">Step {statusStep + 1}/{steps.length}</span>
                 </div>
               </>
             )}
             {done && (
               <button
-                onClick={() => {
-                  navigate(`/reports/${encodeURIComponent(analyzingCompany)}`);
-                  dismiss();
-                }}
-                className="text-xs text-sky-400 hover:text-blue-300 transition-colors font-medium"
+                onClick={() => { navigate(`/reports/${encodeURIComponent(analyzingCompany)}`); dismiss(); }}
+                className="text-xs text-blue-500 hover:text-blue-600 transition-colors font-medium"
               >
                 View report →
               </button>
             )}
-            {analysisError && (
-              <p className="text-xs text-red-400">{analysisError}</p>
-            )}
+            {analysisError && <p className="text-xs text-red-500">{analysisError}</p>}
           </div>
         </div>
       )}
@@ -247,24 +215,15 @@ export default function Layout({
       {/* ── Add Competitor Dialog ── */}
       {addOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => setAddOpen(false)}
-          />
-          <div className="relative bg-zinc-900 border border-zinc-700/80 rounded-2xl p-6 w-full max-w-sm shadow-2xl shadow-black/50 animate-slide-up">
-            <h2 className="text-sm font-semibold text-zinc-100 mb-1 font-display">
-              Add Competitor
-            </h2>
-            <p className="text-xs text-zinc-500 mb-5">
-              Start tracking a company's public signals.
-            </p>
+          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setAddOpen(false)} />
+          <div className="relative bg-white/95 border border-zinc-200 rounded-2xl p-6 w-full max-w-sm shadow-2xl shadow-zinc-200/80">
+            <h2 className="text-sm font-semibold text-zinc-900 mb-1 font-display">Add Competitor</h2>
+            <p className="text-xs text-zinc-500 mb-5">Start tracking a company's public signals.</p>
             <form onSubmit={handleAdd} className="space-y-3">
               <div>
-                <label className="block text-xs text-zinc-400 mb-1.5">
-                  Company slug
-                </label>
+                <label className="block text-xs text-zinc-600 mb-1.5">Company slug</label>
                 <input
-                  className="w-full bg-zinc-800/80 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-sky-400/60 focus:ring-1 focus:ring-blue-500/20 transition-all font-mono"
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/20 transition-all font-mono"
                   placeholder="e.g. linear, notion, figma"
                   value={newCompany}
                   onChange={(e) => setNewCompany(e.target.value)}
@@ -272,34 +231,31 @@ export default function Layout({
                 />
               </div>
               <div>
-                <label className="block text-xs text-zinc-400 mb-1.5">
-                  Display name{" "}
-                  <span className="text-zinc-600">(optional)</span>
+                <label className="block text-xs text-zinc-600 mb-1.5">
+                  Display name <span className="text-zinc-400">(optional)</span>
                 </label>
                 <input
-                  className="w-full bg-zinc-800/80 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-sky-400/60 focus:ring-1 focus:ring-blue-500/20 transition-all"
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/20 transition-all"
                   placeholder="e.g. Linear"
                   value={newDisplayName}
                   onChange={(e) => setNewDisplayName(e.target.value)}
                 />
               </div>
               {addError && (
-                <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                  {addError}
-                </p>
+                <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{addError}</p>
               )}
               <div className="flex gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => setAddOpen(false)}
-                  className="flex-1 px-4 py-2 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700 transition-all"
+                  className="flex-1 px-4 py-2 rounded-lg text-sm text-zinc-600 hover:text-zinc-800 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={adding || !newCompany.trim()}
-                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
                   {adding ? "Adding…" : "Add Competitor"}
                 </button>

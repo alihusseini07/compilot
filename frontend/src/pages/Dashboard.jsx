@@ -9,29 +9,24 @@ const CONFIDENCE_DOT = {
   high: "bg-emerald-400",
   medium: "bg-amber-400",
   low: "bg-red-400",
-  none: "bg-zinc-600",
+  none: "bg-zinc-300",
 };
 
 const CONFIDENCE_TEXT = {
-  high: "text-emerald-400",
-  medium: "text-amber-400",
-  low: "text-red-400",
-  none: "text-zinc-600",
+  high: "text-emerald-500",
+  medium: "text-amber-500",
+  low: "text-red-500",
+  none: "text-zinc-400",
 };
 
 function ConfidenceDot({ level }) {
   return (
-    <span
-      className={cn(
-        "inline-block w-1.5 h-1.5 rounded-full flex-shrink-0",
-        CONFIDENCE_DOT[level] ?? CONFIDENCE_DOT.none
-      )}
-    />
+    <span className={cn("inline-block w-1.5 h-1.5 rounded-full flex-shrink-0", CONFIDENCE_DOT[level] ?? CONFIDENCE_DOT.none)} />
   );
 }
 
 function RelativeTime({ isoString }) {
-  if (!isoString) return <span className="text-zinc-700">—</span>;
+  if (!isoString) return <span className="text-zinc-300">—</span>;
   const d = new Date(isoString);
   const diff = Date.now() - d.getTime();
   const hours = Math.floor(diff / 3600000);
@@ -40,7 +35,7 @@ function RelativeTime({ isoString }) {
   if (hours < 1) label = "Just now";
   else if (hours < 24) label = `${hours}h ago`;
   else label = `${days}d ago`;
-  return <span className="text-zinc-500 font-mono text-[11px]">{label}</span>;
+  return <span className="text-zinc-400 font-mono text-[11px]">{label}</span>;
 }
 
 function CompetitorCard({ competitor, token }) {
@@ -49,9 +44,7 @@ function CompetitorCard({ competitor, token }) {
   const [analyzing, setAnalyzing] = useState(false);
 
   useEffect(() => {
-    fetchLatest(competitor.company)
-      .then(setLatestData)
-      .catch(() => {});
+    fetchLatest(competitor.company).then(setLatestData).catch(() => {});
   }, [competitor.company]);
 
   async function handleQuickAnalyze(e) {
@@ -60,9 +53,7 @@ function CompetitorCard({ competitor, token }) {
     setAnalyzing(true);
     try {
       await triggerAnalysis(competitor.company, "daily", token);
-    } catch {
-      /* ignore — analysis queued */
-    } finally {
+    } catch { /* queued */ } finally {
       setAnalyzing(false);
     }
   }
@@ -73,24 +64,23 @@ function CompetitorCard({ competitor, token }) {
 
   return (
     <div
-      className="group bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-2xl p-5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-black/30 flex flex-col gap-4"
+      className="group bg-white/80 border border-zinc-200 hover:border-blue-200 rounded-2xl p-5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-blue-100/60 flex flex-col gap-4 backdrop-blur-sm"
       onClick={() => navigate(`/reports/${encodeURIComponent(competitor.company)}`)}
     >
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="font-semibold text-zinc-100 group-hover:text-white transition-colors font-display">
+          <h3 className="font-semibold text-zinc-900 group-hover:text-zinc-950 transition-colors font-display">
             {competitor.display_name || competitor.company}
           </h3>
-          <p className="text-xs text-zinc-600 font-mono mt-0.5">{competitor.company}</p>
+          <p className="text-xs text-zinc-400 font-mono mt-0.5">{competitor.company}</p>
         </div>
         <button
           onClick={handleQuickAnalyze}
           disabled={analyzing}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-blue-600/10 hover:text-blue-300 text-zinc-500 border border-zinc-700 hover:border-sky-400/30 transition-all disabled:opacity-50"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 hover:bg-blue-50 hover:text-blue-600 text-zinc-500 border border-zinc-200 hover:border-blue-200 transition-all disabled:opacity-50"
         >
           {analyzing ? (
-            <span className="w-3 h-3 border border-zinc-500 border-t-blue-400 rounded-full animate-spin" />
+            <span className="w-3 h-3 border border-zinc-300 border-t-blue-500 rounded-full animate-spin" />
           ) : (
             <Zap className="w-3 h-3" />
           )}
@@ -98,7 +88,6 @@ function CompetitorCard({ competitor, token }) {
         </button>
       </div>
 
-      {/* Report type badges */}
       <div className="flex flex-col gap-2">
         {[
           { key: "daily", data: daily, label: "Daily" },
@@ -110,12 +99,7 @@ function CompetitorCard({ competitor, token }) {
               <ConfidenceDot level={data?.overall_confidence ?? "none"} />
               <span className="text-xs text-zinc-500">{label}</span>
               {data?.overall_confidence && (
-                <span
-                  className={cn(
-                    "text-[10px] font-mono",
-                    CONFIDENCE_TEXT[data.overall_confidence] ?? CONFIDENCE_TEXT.none
-                  )}
-                >
+                <span className={cn("text-[10px] font-mono", CONFIDENCE_TEXT[data.overall_confidence] ?? CONFIDENCE_TEXT.none)}>
                   {data.overall_confidence}
                 </span>
               )}
@@ -125,13 +109,12 @@ function CompetitorCard({ competitor, token }) {
         ))}
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between pt-1 border-t border-zinc-800/60">
-        <div className="flex items-center gap-1.5 text-xs text-zinc-700">
+      <div className="flex items-center justify-between pt-1 border-t border-zinc-100">
+        <div className="flex items-center gap-1.5 text-xs text-zinc-400">
           <Clock className="w-3 h-3" />
           <RelativeTime isoString={competitor.added_at} />
         </div>
-        <span className="text-xs text-zinc-700 group-hover:text-sky-400 transition-colors flex items-center gap-1">
+        <span className="text-xs text-zinc-400 group-hover:text-blue-500 transition-colors flex items-center gap-1">
           View reports <ArrowRight className="w-3 h-3" />
         </span>
       </div>
@@ -145,26 +128,19 @@ export default function Dashboard({ competitors }) {
 
   return (
     <div className="p-8 max-w-6xl">
-      {/* Page header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-zinc-100 font-display tracking-tight">Dashboard</h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          Overview of all tracked competitors and their latest intelligence.
-        </p>
+        <h1 className="text-2xl font-bold text-zinc-900 font-display tracking-tight">Dashboard</h1>
+        <p className="text-sm text-zinc-500 mt-1">Overview of all tracked competitors and their latest intelligence.</p>
       </div>
 
       {competitors.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-32 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-5">
-            <Plus className="w-7 h-7 text-zinc-600" />
+          <div className="w-16 h-16 rounded-2xl bg-white border border-zinc-200 flex items-center justify-center mb-5 shadow-sm">
+            <Plus className="w-7 h-7 text-zinc-400" />
           </div>
-          <h3 className="text-base font-semibold text-zinc-300 font-display mb-2">
-            No competitors tracked yet
-          </h3>
-          <p className="text-sm text-zinc-600 max-w-xs mb-6">
-            Add your first competitor using the{" "}
-            <span className="text-zinc-400">+</span> button in the sidebar to start
-            monitoring their signals.
+          <h3 className="text-base font-semibold text-zinc-700 font-display mb-2">No competitors tracked yet</h3>
+          <p className="text-sm text-zinc-400 max-w-xs mb-6">
+            Add your first competitor using the <span className="text-zinc-600">+</span> button in the sidebar to start monitoring their signals.
           </p>
         </div>
       ) : (
