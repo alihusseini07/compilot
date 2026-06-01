@@ -174,8 +174,6 @@ const roles = [
   { title: "GTM teams", description: "Arm sales with live competitive intel. Win deals with context.", preview: "Battlecards\nLaunch alerts\nThreat scoring" },
 ];
 
-const trustedBy = ["Linear", "Vercel", "Retool", "Notion", "Stripe", "Figma"];
-
 /* ── Landing ── */
 export default function Landing() {
   const { isAuthenticated } = useAuth();
@@ -277,22 +275,6 @@ export default function Landing() {
               boxShadow: "0 -1px 60px rgba(59,130,246,0.08), 0 -1px 0 rgba(59,130,246,0.20)",
             }}
           />
-        </div>
-      </section>
-
-      {/* ── Trusted by ── */}
-      <section className="py-20 px-6 border-t border-zinc-200/60">
-        <div className="max-w-4xl mx-auto">
-          <p className="text-center text-xs text-zinc-400 uppercase tracking-widest font-mono mb-10">
-            Trusted by teams at
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-10">
-            {trustedBy.map((name) => (
-              <span key={name} className="text-zinc-300 text-lg font-semibold tracking-tight hover:text-zinc-500 transition-colors">
-                {name}
-              </span>
-            ))}
-          </div>
         </div>
       </section>
 
